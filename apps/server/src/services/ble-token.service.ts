@@ -15,7 +15,10 @@ export class BleTokenService {
   }
 
   private generateSecureToken(): string {
-    return randomBytes(32).toString('hex');
+    // 16 cryptographically secure bytes (128 bits) translates to 32 hex chars,
+    // which maps 1:1 to a standard 128-bit BLE Service UUID (21-byte total advertisement).
+    // This strictly adheres to the 31-byte legacy BLE advertisement limit on all Android hardware.
+    return randomBytes(16).toString('hex');
   }
 
   async generateTokensForSession(sessionId: string, classId: string) {
@@ -46,6 +49,8 @@ export class BleTokenService {
         studentId: student.id,
         token: plainToken
       });
+
+      BleTokenService.activeTokenCache.set(`${sessionId}_${student.id}`, plainToken);
     }
 
     if (tokensToInsert.length > 0) {
@@ -71,7 +76,12 @@ export class BleTokenService {
       throw new Error(`TOKEN_${tokenRecord.status}`);
     }
 
-    if (new Date(tokenRecord.expiresAt) < new Date()) {
+    const rawExpiresAt = String(tokenRecord.expiresAt);
+    const expiresAtUtc = rawExpiresAt.endsWith('Z')
+      ? new Date(rawExpiresAt)
+      : new Date(`${rawExpiresAt.replace(' ', 'T')}Z`);
+
+    if (expiresAtUtc.getTime() < Date.now()) {
       throw new Error("TOKEN_EXPIRED");
     }
 

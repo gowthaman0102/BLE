@@ -43,6 +43,10 @@ describe('Phase W7 — Timetable & Overrides Integration Test Suite', () => {
     if (!rHod) {
       rHod = await db.insert(roles).values({ name: 'HOD', description: 'Head of Dept' }).returning().then(r => r[0]);
     }
+    let rStaff = await db.select().from(roles).where(eq(roles.name, 'STAFF')).then(r => r[0]);
+    if (!rStaff) {
+      rStaff = await db.insert(roles).values({ name: 'STAFF', description: 'Faculty' }).returning().then(r => r[0]);
+    }
 
     // Staff
     const rand = Math.random().toString(36).substring(2, 7);
@@ -74,6 +78,7 @@ describe('Phase W7 — Timetable & Overrides Integration Test Suite', () => {
     }).returning().then(r => r[0]);
     staffAId = sA.id;
     createdStaffIds.push(staffAId);
+    await db.insert(staffRoles).values({ staffId: staffAId, roleId: rStaff.id });
 
     const sB = await db.insert(staff).values({
       staffCode: `TT-SB-${rand}`,
@@ -83,6 +88,7 @@ describe('Phase W7 — Timetable & Overrides Integration Test Suite', () => {
     }).returning().then(r => r[0]);
     staffBId = sB.id;
     createdStaffIds.push(staffBId);
+    await db.insert(staffRoles).values({ staffId: staffBId, roleId: rStaff.id });
 
     // Tokens
     adminToken = await msAuthService.createSessionToken({

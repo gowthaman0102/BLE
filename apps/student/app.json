@@ -34,6 +34,12 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Smart Attendance to access your camera to take attendance selfies and verify liveness."
+        }
       ]
     ],
     "experiments": {

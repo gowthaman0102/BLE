@@ -1,9 +1,12 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import "dotenv/config";
 
+import { getConfig } from "./config/env";
+import { client } from "./db";
+import { securityHeadersMiddleware, hardenedCorsMiddleware } from "./middlewares/security.middleware";
+import { authRateLimitMiddleware } from "./middlewares/rate-limit.middleware";
 import { authRoutes } from "./routes/auth";
 import { academicRoutes } from "./routes/academic";
 import { studentRoutes } from "./routes/students";
@@ -20,21 +23,17 @@ import { settingsRoutes } from "./routes/settings";
 import { dashboardRoutes } from "./routes/dashboard";
 import { authenticate } from "./middlewares/auth.middleware";
 
+// Initialize and validate configuration
+const config = getConfig();
+
 const app = new Hono();
 
-// Middleware
+// Global Middleware
 app.use("*", logger());
-app.use(
-  "*",
-  cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:5173",
-    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  })
-);
+app.use("*", securityHeadersMiddleware());
+app.use("*", hardenedCorsMiddleware());
 
-// Health check
+// Health check endpoints
 app.get("/", (c) => {
   return c.json({
     message: "Smart Attendance API",
@@ -42,6 +41,41 @@ app.get("/", (c) => {
     version: "0.1.0",
   });
 });
+
+// Liveness probe (process is running)
+app.get("/health", (c) => {
+  return c.json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Readiness probe (process + database connectivity)
+app.get("/ready", async (c) => {
+  try {
+    await client`SELECT 1`;
+    return c.json({
+      status: "ready",
+      database: "connected",
+      timestamp: new Date().toISOString(),
+    });
+  } catch {
+    return c.json(
+      {
+        status: "unready",
+        database: "disconnected",
+        error: "Database connectivity check failed.",
+      },
+      503
+    );
+  }
+});
+
+// Authentication Endpoint Rate Limiting (Sensitive Public Auth Routes)
+app.use("/api/auth/login", authRateLimitMiddleware());
+app.use("/api/auth/student/login", authRateLimitMiddleware());
+app.use("/api/auth/staff-register", authRateLimitMiddleware());
+app.use("/api/auth/signup", authRateLimitMiddleware());
 
 // Global Auth Middleware
 app.use("/api/*", async (c, next) => {
@@ -90,9 +124,26 @@ app.onError((err, c) => {
   return c.json({ error: "Internal Server Error" }, 500);
 });
 
-const port = parseInt(process.env.PORT || "3000", 10);
+const port = config.port;
 
-if (process.env.NODE_ENV !== 'test') {
+let isShuttingDown = false;
+async function handleShutdown(signal: string) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
+  try {
+    await client.end({ timeout: 5 });
+    console.log("Database connection pool closed cleanly.");
+  } catch (err) {
+    console.error("Error closing database connections during shutdown:", err);
+  }
+  process.exit(0);
+}
+
+if (config.nodeEnv !== 'test') {
+  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+  process.on('SIGINT', () => handleShutdown('SIGINT'));
+
   serve(
     {
       fetch: app.fetch,

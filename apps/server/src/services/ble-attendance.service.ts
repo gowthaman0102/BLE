@@ -3,6 +3,11 @@ import { AttendanceRecordRepository } from '../repositories/attendance-record.re
 import { AttendanceSessionRepository } from '../repositories/attendanceSession.repository';
 import { StudentRepository } from '../repositories/student.repository';
 import { TimetableRepository } from '../repositories/timetable.repository';
+import { db } from '../db';
+import { attendanceFaceVerifications } from '../db/schema/face-verification';
+import { attendanceFallbackRequests } from '../db/schema/attendance-records';
+import { eq } from 'drizzle-orm';
+import type { RosterFaceStatus } from '@smart-attendance/shared';
 
 export class BleAttendanceService {
   private tokenService = new BleTokenService();
@@ -74,8 +79,9 @@ export class BleAttendanceService {
           });
           accepted++;
         }
-      } catch (error) {
+      } catch (error: any) {
         // 11. Ignore invalid detections safely
+        console.error('[BLE Detection Debug]', error?.message || error);
         rejected++;
       }
     }
@@ -121,14 +127,53 @@ export class BleAttendanceService {
     const records = await this.recordRepo.findAllBySession(sessionId);
     const recordMap = new Map(records.map(r => [r.studentId, r]));
 
+    const faceVerifications = await db
+      .select()
+      .from(attendanceFaceVerifications)
+      .where(eq(attendanceFaceVerifications.attendanceSessionId, sessionId));
+    const faceMap = new Map(faceVerifications.map(f => [f.studentId, f]));
+
+    const fallbackRequests = await db
+      .select()
+      .from(attendanceFallbackRequests)
+      .where(eq(attendanceFallbackRequests.attendanceSessionId, sessionId));
+    const fallbackMap = new Map(fallbackRequests.map(f => [f.studentId, f]));
+
     const roster = activeStudents.map((student: any) => {
       const record = recordMap.get(student.id);
+      const faceVerif = faceMap.get(student.id);
+      const fallbackReq = fallbackMap.get(student.id);
+
+      let faceVerificationStatus: RosterFaceStatus = 'NOT_REQUIRED';
+      if (record?.source === 'MANUAL') {
+        faceVerificationStatus = 'MANUAL_CORRECTION';
+      } else if (fallbackReq && fallbackReq.status === 'PENDING') {
+        faceVerificationStatus = 'FALLBACK_PENDING';
+      } else if (faceVerif?.status === 'VERIFIED') {
+        faceVerificationStatus = 'VERIFIED';
+      } else if (faceVerif?.status && String(faceVerif.status).startsWith('FAILED')) {
+        faceVerificationStatus = 'FAILED';
+      } else if (record) {
+        faceVerificationStatus = 'PENDING';
+      } else {
+        faceVerificationStatus = 'NOT_REQUIRED';
+      }
+
       return {
+        recordId: record?.id || null,
         studentId: student.id,
         registerNumber: student.registerNumber,
         name: student.name,
         status: record ? record.status : 'NOT DETECTED',
         source: record?.source,
+        faceVerificationStatus,
+        fallbackRequest: fallbackReq ? {
+          id: fallbackReq.id,
+          reasonCategory: fallbackReq.reasonCategory as any,
+          explanation: fallbackReq.explanation,
+          status: fallbackReq.status as any,
+          createdAt: new Date(fallbackReq.createdAt).toISOString(),
+        } : null,
         firstDetectedAt: record?.firstDetectedAt,
         lastDetectedAt: record?.lastDetectedAt,
         detectionCount: record?.detectionCount || 0

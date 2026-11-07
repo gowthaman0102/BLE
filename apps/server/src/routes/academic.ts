@@ -3,7 +3,7 @@ import { AcademicService } from "../services/academic.service";
 import { StaffService } from "../services/staff.service";
 import { ClassSubjectService } from "../services/class-subject.service";
 import { TimetableRepository } from "../repositories/timetable.repository";
-import { requireHodOrAdmin, requireSharedDashboardRead } from "../middlewares/auth.middleware";
+import { requireHodOrAdmin, requireSharedDashboardRead, requireRole } from "../middlewares/auth.middleware";
 
 export const academicRoutes = new Hono();
 const service = new AcademicService();
@@ -51,6 +51,45 @@ academicRoutes.get("/departments", requireSharedDashboardRead, async (c) => {
   try {
     const data = await service.getDepartments();
     return c.json({ success: true, data });
+  } catch (error: any) {
+    return handleAcademicError(c, error);
+  }
+});
+
+academicRoutes.get("/departments/:id", requireSharedDashboardRead, async (c) => {
+  try {
+    const data = await service.getDepartmentById(c.req.param("id")!);
+    if (!data) return c.json({ success: false, error: { code: 'NOT_FOUND', message: "Department not found" } }, 404);
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return handleAcademicError(c, error);
+  }
+});
+
+academicRoutes.post("/departments", requireRole('ADMIN'), async (c) => {
+  try {
+    const body = await c.req.json();
+    const data = await service.createDepartment(body, getActorFromContext(c));
+    return c.json({ success: true, data }, 201);
+  } catch (error: any) {
+    return handleAcademicError(c, error);
+  }
+});
+
+academicRoutes.patch("/departments/:id", requireRole('ADMIN'), async (c) => {
+  try {
+    const body = await c.req.json();
+    const data = await service.updateDepartment(c.req.param("id")!, body, getActorFromContext(c));
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return handleAcademicError(c, error);
+  }
+});
+
+academicRoutes.delete("/departments/:id", requireRole('ADMIN'), async (c) => {
+  try {
+    await service.deleteDepartment(c.req.param("id")!, getActorFromContext(c));
+    return c.json({ success: true });
   } catch (error: any) {
     return handleAcademicError(c, error);
   }

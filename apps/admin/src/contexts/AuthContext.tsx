@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkAuth = useCallback(async () => {
     try {
-      const response = await api.get<{ success: boolean; user?: AuthUser }>('/api/auth/me');
+      const response = await api.get<{ success: boolean; user?: AuthUser }>('/auth/me');
       const roles = extractRoles(response.user);
       if (response.success && response.user && canUseStaffPortal(roles)) {
         setState({ isAuthenticated: true, user: { ...response.user, roles }, roles, loading: false });
@@ -78,13 +78,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await api.post<{ success: boolean; user?: AuthUser; error?: { message?: string } }>(
-        '/api/auth/login',
+      const response = await api.post<{ success: boolean; user?: AuthUser; token?: string; error?: { message?: string } }>(
+        '/auth/login',
         { email, password },
       );
       const roles = extractRoles(response.user);
       if (!response.success || !response.user || !canUseStaffPortal(roles)) {
         return { success: false, error: response.error?.message || 'Sign-in failed.' };
+      }
+      if (response.token && typeof window !== 'undefined') {
+        localStorage.setItem('admin_token', response.token);
       }
       setState({ isAuthenticated: true, user: { ...response.user, roles }, roles, loading: false });
       return { success: true };
@@ -101,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signup = async (name: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const response = await api.post<{ success: boolean; user?: AuthUser; error?: { message?: string } }>(
-        '/api/auth/signup',
+        '/auth/signup',
         { name, email, password },
       );
       const roles = extractRoles(response.user);
@@ -129,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }): Promise<{ success: boolean; message?: string; error?: string }> => {
     try {
       const response = await api.post<{ success: boolean; message?: string; error?: { message?: string } }>(
-        '/api/auth/staff-register',
+        '/auth/staff-register',
         data,
       );
       if (!response.success) {
@@ -147,7 +150,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await api.post('/api/auth/logout');
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // Ignore network errors on logout
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('admin_token');
+    }
     setState({ isAuthenticated: false, user: null, roles: [], loading: false });
   };
 
@@ -167,3 +177,5 @@ export function useAuth() {
   if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }
+
+

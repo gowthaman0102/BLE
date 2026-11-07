@@ -36,7 +36,7 @@ export default function Sidebar() {
 
   // Auto-expand parents if active route matches child
   useEffect(() => {
-    if (['/academic-years', '/batches', '/regulations', '/classes'].includes(location.pathname)) {
+    if (['/departments', '/academic-years', '/batches', '/regulations', '/classes'].includes(location.pathname)) {
       setExpanded((prev) => ({ ...prev, Academic: true }));
     }
     if (['/timetable', '/timetable/overrides'].includes(location.pathname)) {
@@ -64,10 +64,11 @@ export default function Sidebar() {
           icon: 'academic',
           allowedRoles: ['ADMIN', 'HOD', 'DEPUTY_HOD', 'STAFF', 'FACULTY'],
           children: [
+            { label: 'Departments', path: '/departments' },
             { label: 'Academic Years', path: '/academic-years' },
             { label: 'Batches', path: '/batches' },
             { label: 'Regulations', path: '/regulations' },
-            { label: 'Classes', path: '/classes' },
+            { label: 'Classes & Sections', path: '/classes' },
           ],
         },
         {

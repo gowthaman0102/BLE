@@ -1,125 +1,418 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, useMemo } from 'react';
 import PageHeader from '../components/PageHeader';
 import DataTable from '../components/DataTable';
 import Badge from '../components/Badge';
 import Button from '../components/Button';
+import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import Input from '../components/Input';
 import Select from '../components/Select';
 import { useApi } from '../hooks/useApi';
 import api from '../services/api';
-import type { ApiResponse, Batch } from '../types';
-
-interface DepartmentOption {
-  id: string;
-  name: string;
-  code: string;
-  status: 'ACTIVE' | 'INACTIVE';
-}
-
-interface BatchForm {
-  name: string;
-  startYear: string;
-  endYear: string;
-  departmentId: string;
-}
-
-const EMPTY_FORM: BatchForm = { name: '', startYear: '', endYear: '', departmentId: '' };
+import { useToast } from '../hooks/useToast';
+import type { ApiResponse, Batch, Department, TableColumn } from '../types';
 
 export default function BatchesPage() {
   const { data: batchResponse, loading, error, refetch } = useApi<ApiResponse<Batch[]>>('/api/batches');
-  const { data: departmentsResponse, error: departmentsError } = useApi<ApiResponse<DepartmentOption[]>>('/api/departments');
-  const [form, setForm] = useState<BatchForm>(EMPTY_FORM);
-  const [editing, setEditing] = useState<Batch | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const { data: departmentsResponse, error: departmentsError } = useApi<ApiResponse<Department[]>>('/api/departments');
+  const { showToast } = useToast();
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Form State
+  const [name, setName] = useState('');
+  const [startYear, setStartYear] = useState('');
+  const [endYear, setEndYear] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
+  const [status, setStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
   const [formError, setFormError] = useState('');
-  const [notice, setNotice] = useState('');
+
+  // Filters
+  const [deptFilter, setDeptFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Confirmation dialog for deactivation / activation
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    batch: Batch | null;
+    action: 'DEACTIVATE' | 'ACTIVATE';
+    loading: boolean;
+  }>({
+    isOpen: false,
+    batch: null,
+    action: 'DEACTIVATE',
+    loading: false,
+  });
+
   const batches = batchResponse?.data || [];
-  const departments = (departmentsResponse?.data || []).filter((item) => item.status === 'ACTIVE');
+  const departments = departmentsResponse?.data || [];
+  const activeDepartments = departments.filter((d) => d.status === 'ACTIVE');
 
-  useEffect(() => {
-    if (!form.departmentId && departments.length === 1) {
-      setForm((current) => ({ ...current, departmentId: departments[0].id }));
+  const openModal = (batch?: Batch) => {
+    if (batch) {
+      setEditingBatch(batch);
+      setName(batch.name);
+      setStartYear(String(batch.startYear));
+      setEndYear(String(batch.endYear));
+      setDepartmentId(batch.departmentId || '');
+      setStatus(batch.status);
+    } else {
+      setEditingBatch(null);
+      setName('');
+      setStartYear('');
+      setEndYear('');
+      setDepartmentId(activeDepartments.length === 1 ? activeDepartments[0].id : '');
+      setStatus('ACTIVE');
     }
-  }, [departments, form.departmentId]);
-
-  const openForm = (batch?: Batch) => {
-    setEditing(batch || null);
-    setForm(batch
-      ? { name: batch.name, startYear: String(batch.startYear), endYear: String(batch.endYear), departmentId: batch.departmentId || '' }
-      : { ...EMPTY_FORM, departmentId: departments.length === 1 ? departments[0].id : '' });
     setFormError('');
-    setFormOpen(true);
+    setIsModalOpen(true);
   };
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSaving(true);
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingBatch(null);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setFormError('');
-    setNotice('');
+
+    const start = Number(startYear);
+    const end = Number(endYear);
+
+    if (!name.trim()) {
+      setFormError('Batch name is required.');
+      return;
+    }
+
+    if (!start || !end) {
+      setFormError('Start year and expected graduation year are required.');
+      return;
+    }
+
+    if (start >= end) {
+      setFormError('Admission start year must be less than graduation year.');
+      return;
+    }
+
+    if (!departmentId) {
+      setFormError('A department must be selected for this batch.');
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       const payload = {
-        name: form.name.trim(),
-        startYear: Number(form.startYear),
-        endYear: Number(form.endYear),
-        departmentId: form.departmentId || undefined,
+        name: name.trim(),
+        startYear: start,
+        endYear: end,
+        departmentId,
+        status,
       };
-      if (editing) await api.patch(`/api/batches/${editing.id}`, payload);
-      else await api.post('/api/batches', payload);
-      setNotice(editing ? 'Batch updated.' : 'Batch created.');
-      setFormOpen(false);
-      setForm(EMPTY_FORM);
-      setEditing(null);
-      await refetch();
-    } catch (requestError: unknown) {
-      setFormError(requestError && typeof requestError === 'object' && 'message' in requestError && typeof requestError.message === 'string'
-        ? requestError.message
-        : 'Unable to save batch.');
+
+      if (editingBatch) {
+        await api.patch(`/api/batches/${editingBatch.id}`, payload);
+        showToast('success', `Batch "${payload.name}" updated successfully`);
+      } else {
+        await api.post('/api/batches', payload);
+        showToast('success', `Batch "${payload.name}" created successfully`);
+      }
+      closeModal();
+      refetch();
+    } catch (err: any) {
+      setFormError(err.response?.data?.error?.message || err.message || 'An error occurred.');
     } finally {
-      setSaving(false);
+      setIsSubmitting(false);
     }
   };
 
-  const columns = [
+  const promptStatusToggle = (batch: Batch) => {
+    setConfirmDialog({
+      isOpen: true,
+      batch,
+      action: batch.status === 'ACTIVE' ? 'DEACTIVATE' : 'ACTIVATE',
+      loading: false,
+    });
+  };
+
+  const handleConfirmStatusToggle = async () => {
+    if (!confirmDialog.batch) return;
+    const targetBatch = confirmDialog.batch;
+    const nextStatus = confirmDialog.action === 'DEACTIVATE' ? 'INACTIVE' : 'ACTIVE';
+
+    setConfirmDialog((prev) => ({ ...prev, loading: true }));
+    try {
+      await api.patch(`/api/batches/${targetBatch.id}`, { status: nextStatus });
+      showToast('success', `Batch "${targetBatch.name}" is now ${nextStatus.toLowerCase()}`);
+      setConfirmDialog({ isOpen: false, batch: null, action: 'DEACTIVATE', loading: false });
+      refetch();
+    } catch (err: any) {
+      showToast('error', err.response?.data?.error?.message || err.message || 'Failed to update batch status');
+      setConfirmDialog((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent, batch: Batch) => {
+    e.stopPropagation();
+    if (!window.confirm(`Are you sure you want to delete batch "${batch.name}"? If classes are associated with it, deletion will be blocked.`)) {
+      return;
+    }
+
+    try {
+      await api.delete(`/api/batches/${batch.id}`);
+      showToast('success', `Batch "${batch.name}" deleted successfully`);
+      refetch();
+    } catch (err: any) {
+      showToast('error', err.response?.data?.error?.message || err.message || 'Failed to delete batch');
+    }
+  };
+
+  const filteredBatches = useMemo(() => {
+    return batches.filter((b) => {
+      if (deptFilter && b.departmentId !== deptFilter) return false;
+      if (statusFilter && b.status !== statusFilter) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return b.name.toLowerCase().includes(q) || (b.department && b.department.toLowerCase().includes(q));
+      }
+      return true;
+    });
+  }, [batches, deptFilter, statusFilter, searchQuery]);
+
+  const columns: TableColumn<Batch>[] = useMemo(() => [
     { key: 'name', label: 'Admission Batch', sortable: true },
-    { key: 'startYear', label: 'Start Year' },
-    { key: 'endYear', label: 'End Year' },
-    { key: 'department', label: 'Department' },
-    { key: 'status', label: 'Status', render: (value: unknown) => <Badge variant={value === 'ACTIVE' ? 'success' : 'default'}>{String(value)}</Badge> },
-  ];
+    { key: 'startYear', label: 'Start Year', sortable: true },
+    { key: 'endYear', label: 'Graduation Year', sortable: true },
+    {
+      key: 'department',
+      label: 'Department',
+      render: (val: any, row: Batch) => {
+        const dept = departments.find((d) => d.id === row.departmentId);
+        return dept ? `${dept.name} (${dept.code})` : val || '—';
+      },
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (val: any) => (
+        <Badge variant={val === 'ACTIVE' ? 'success' : 'danger'}>{val}</Badge>
+      ),
+    },
+  ], [departments]);
+
+  const renderActions = (row: Batch) => (
+    <div style={{ display: 'flex', gap: '8px' }}>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={(e) => {
+          e.stopPropagation();
+          openModal(row);
+        }}
+      >
+        Edit
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={(e) => {
+          e.stopPropagation();
+          promptStatusToggle(row);
+        }}
+        style={{ color: row.status === 'ACTIVE' ? 'var(--color-warning)' : 'var(--color-success)' }}
+      >
+        {row.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={(e) => handleDelete(e, row)}
+        style={{ color: 'var(--color-danger)' }}
+      >
+        Delete
+      </Button>
+    </div>
+  );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="batches-page" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <PageHeader
         title="Admission Batches"
-        breadcrumbs={[{ label: 'Home', path: '/dashboard' }, { label: 'Academic' }, { label: 'Batches' }]}
-        actions={<Button onClick={() => openForm()}>Add Batch</Button>}
+        breadcrumbs={[
+          { label: 'Home', path: '/dashboard' },
+          { label: 'Academic' },
+          { label: 'Batches' },
+        ]}
+        actions={
+          <Button onClick={() => openModal()} disabled={activeDepartments.length === 0}>
+            Add Batch
+          </Button>
+        }
       />
-      {notice && <div role="status">{notice}</div>}
-      {error && <div role="alert">Batches could not be loaded: {error.message || 'Request failed.'}</div>}
-      {departmentsError && <div role="alert">Departments could not be loaded; batch creation is unavailable: {departmentsError.message || 'Request failed.'}</div>}
-      {formOpen && (
-        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 20, background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 8 }}>
-          <h2>{editing ? 'Edit Batch' : 'Add Batch'}</h2>
-          {formError && <div role="alert">{formError}</div>}
-          <Input label="Batch name" required maxLength={50} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-          <Input label="Admission start year" type="number" required min={2000} max={2200} value={form.startYear} onChange={(event) => setForm({ ...form, startYear: event.target.value })} />
-          <Input label="Expected graduation year" type="number" required min={2001} max={2205} value={form.endYear} onChange={(event) => setForm({ ...form, endYear: event.target.value })} />
-          <Select label="Department" value={form.departmentId} onChange={(value) => setForm({ ...form, departmentId: value })} options={[{ value: '', label: 'Select department' }, ...departments.map((department) => ({ value: department.id, label: `${department.name} (${department.code})` }))]} />
-          {departments.length === 0 && <p role="note">No active department is configured. A department must exist before a batch can be created.</p>}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button type="submit" disabled={saving || departments.length === 0}>{saving ? 'Saving…' : 'Save batch'}</Button>
-            <Button type="button" variant="secondary" onClick={() => setFormOpen(false)} disabled={saving}>Cancel</Button>
-          </div>
-        </form>
+
+      {/* Filter and Search Bar */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+        <Input
+          placeholder="Search batches..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ maxWidth: '240px' }}
+        />
+
+        <div style={{ minWidth: '180px' }}>
+          <Select
+            value={deptFilter}
+            onChange={setDeptFilter}
+            options={[
+              { value: '', label: 'All Departments' },
+              ...departments.map((d) => ({ value: d.id, label: `${d.code} — ${d.name}` })),
+            ]}
+          />
+        </div>
+
+        <div style={{ minWidth: '140px' }}>
+          <Select
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: '', label: 'All Statuses' },
+              { value: 'ACTIVE', label: 'Active' },
+              { value: 'INACTIVE', label: 'Inactive' },
+            ]}
+          />
+        </div>
+
+        <div style={{ marginLeft: 'auto', fontSize: '14px', color: 'var(--color-text-secondary)' }}>
+          Showing <strong>{filteredBatches.length}</strong> of {batches.length} batches
+        </div>
+      </div>
+
+      {error && (
+        <div role="alert" style={{ padding: '12px', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--color-danger)', borderRadius: '6px' }}>
+          Batches could not be loaded: {error.message || 'Request failed.'}
+          <Button variant="ghost" size="sm" onClick={() => void refetch()} style={{ marginLeft: '12px' }}>Retry</Button>
+        </div>
       )}
+
+      {departmentsError && (
+        <div role="alert" style={{ padding: '12px', background: 'rgba(245, 158, 11, 0.1)', color: 'var(--color-warning)', borderRadius: '6px' }}>
+          Departments could not be loaded; batch creation is unavailable: {departmentsError.message || 'Request failed.'}
+        </div>
+      )}
+
       <DataTable
         columns={columns}
-        data={batches}
+        data={filteredBatches}
         keyField="id"
         loading={loading}
-        emptyMessage={error ? 'Batch data is unavailable.' : 'No batches are configured yet.'}
-        actions={(batch) => <Button variant="ghost" size="sm" onClick={() => openForm(batch)}>Edit</Button>}
+        onRowClick={(row) => openModal(row)}
+        actions={renderActions}
+        emptyMessage={error ? 'Batch data is unavailable.' : 'No batches match the selected criteria.'}
+      />
+
+      {/* Create / Edit Batch Modal */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={closeModal}
+        title={editingBatch ? 'Edit Admission Batch' : 'Add Admission Batch'}
+      >
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {formError && (
+            <div role="alert" style={{ color: 'var(--color-danger)', fontSize: '14px', padding: '8px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '4px' }}>
+              {formError}
+            </div>
+          )}
+
+          <Input
+            label="Batch Name"
+            placeholder="e.g. 2024–2028"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            maxLength={50}
+          />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <Input
+              label="Admission Start Year"
+              type="number"
+              placeholder="e.g. 2024"
+              value={startYear}
+              onChange={(e) => {
+                setStartYear(e.target.value);
+                if (e.target.value && !endYear && !editingBatch) {
+                  setEndYear(String(Number(e.target.value) + 4));
+                  if (!name) setName(`${e.target.value}–${Number(e.target.value) + 4}`);
+                }
+              }}
+              required
+              min={2000}
+              max={2200}
+            />
+
+            <Input
+              label="Expected Graduation Year"
+              type="number"
+              placeholder="e.g. 2028"
+              value={endYear}
+              onChange={(e) => setEndYear(e.target.value)}
+              required
+              min={2001}
+              max={2205}
+            />
+          </div>
+
+          <Select
+            label="Department"
+            value={departmentId}
+            onChange={setDepartmentId}
+            options={[
+              { value: '', label: 'Select department' },
+              ...activeDepartments.map((d) => ({
+                value: d.id,
+                label: `${d.name} (${d.code})`,
+              })),
+            ]}
+          />
+
+          {editingBatch && (
+            <Select
+              label="Status"
+              value={status}
+              onChange={(val) => setStatus(val as any)}
+              options={[
+                { value: 'ACTIVE', label: 'Active' },
+                { value: 'INACTIVE', label: 'Inactive' },
+              ]}
+            />
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+            <Button variant="ghost" onClick={closeModal} type="button">Cancel</Button>
+            <Button type="submit" loading={isSubmitting} disabled={activeDepartments.length === 0}>
+              {editingBatch ? 'Save Changes' : 'Create Batch'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Confirmation Dialog for Deactivation / Activation */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
+        onConfirm={handleConfirmStatusToggle}
+        title={confirmDialog.action === 'DEACTIVATE' ? 'Deactivate Admission Batch?' : 'Activate Admission Batch?'}
+        message={
+          confirmDialog.action === 'DEACTIVATE'
+            ? `Are you sure you want to deactivate batch "${confirmDialog.batch?.name}"? Existing classes and students will remain in the database, but new classes cannot be scheduled for an inactive batch.`
+            : `Are you sure you want to activate batch "${confirmDialog.batch?.name}"? It will become available for new class schedules.`
+        }
+        confirmLabel={confirmDialog.action === 'DEACTIVATE' ? 'Deactivate' : 'Activate'}
+        variant={confirmDialog.action === 'DEACTIVATE' ? 'danger' : 'primary'}
+        loading={confirmDialog.loading}
       />
     </div>
   );

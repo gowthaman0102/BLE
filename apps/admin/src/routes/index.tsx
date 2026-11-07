@@ -3,6 +3,7 @@ import DashboardLayout from '../layouts/DashboardLayout';
 import LoginPage from '../pages/LoginPage';
 import DashboardPage from '../pages/DashboardPage';
 import ProtectedRoute from '../components/ProtectedRoute';
+import DepartmentsPage from '../pages/DepartmentsPage';
 import AcademicYearsPage from '../pages/AcademicYearsPage';
 import BatchesPage from '../pages/BatchesPage';
 import RegulationsPage from '../pages/RegulationsPage';
@@ -36,8 +37,9 @@ export const router = createBrowserRouter([
         element: <DashboardLayout />,
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
-      { path: 'dashboard', element: <DashboardPage /> },
-      { path: 'academic-years', element: <AcademicYearsPage /> },
+          { path: 'dashboard', element: <DashboardPage /> },
+          { path: 'departments', element: <DepartmentsPage /> },
+          { path: 'academic-years', element: <AcademicYearsPage /> },
       { path: 'batches', element: <BatchesPage /> },
       { path: 'regulations', element: <RegulationsPage /> },
       { path: 'classes', element: <ClassesPage /> },

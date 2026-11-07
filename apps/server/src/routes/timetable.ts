@@ -1,8 +1,6 @@
 import { Hono } from "hono";
 import { TimetableService } from "../services/timetable.service";
 import { TimetableOverrideService } from "../services/timetable-override.service";
-import { db } from "../db";
-import { count, eq } from "drizzle-orm";
 import { requireHodOrAdmin, requireSharedDashboardRead } from "../middlewares/auth.middleware";
 import type { AuthPrincipal } from "@smart-attendance/shared";
 
@@ -15,10 +13,76 @@ function getActorFromContext(c: any) {
   return user ? {
     actorId: user.roles.includes('FACULTY') ? undefined : user.id,
     actorName: user.name,
-    actorRole: user.roles?.[0] || 'HOD',
+    actorRole: user.roles?.[0] || 'ADMIN',
     ipAddress: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || '127.0.0.1',
     userAgent: c.req.header('user-agent'),
   } : undefined;
+}
+
+function handleTimetableError(c: any, error: any) {
+  const msg = error?.message || 'An unexpected error occurred.';
+  if (
+    msg.includes('CLASS_TIMETABLE_CONFLICT') ||
+    msg.includes('STAFF_TIMETABLE_CONFLICT') ||
+    msg.includes('already has') ||
+    msg.includes('Cannot delete') ||
+    error?.code === '23505'
+  ) {
+    const conflictMsg = msg.includes('CLASS_TIMETABLE_CONFLICT')
+      ? 'Class already has another subject scheduled for this day and period.'
+      : msg.includes('STAFF_TIMETABLE_CONFLICT')
+        ? 'Staff member is already assigned to another class during this day and period.'
+        : msg;
+    return c.json({ success: false, error: { code: 'CONFLICT', message: conflictMsg } }, 409);
+  }
+  if (
+    msg.includes('NOT_FOUND') ||
+    msg.includes('not found') ||
+    msg.includes('Not found')
+  ) {
+    const notFoundMsg = msg.includes('CLASS_NOT_FOUND')
+      ? 'Assigned class was not found.'
+      : msg.includes('ACADEMIC_YEAR_NOT_FOUND')
+        ? 'Selected academic year was not found.'
+        : msg.includes('STAFF_NOT_FOUND')
+          ? 'Assigned staff member was not found.'
+          : msg.includes('SUBJECT_NOT_FOUND')
+            ? 'Selected subject was not found.'
+            : msg.includes('PERIOD_NOT_FOUND')
+              ? 'Selected period was not found.'
+              : msg.includes('TIMETABLE_NOT_FOUND')
+                ? 'Timetable entry not found.'
+                : msg;
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: notFoundMsg } }, 404);
+  }
+  if (
+    msg.includes('INACTIVE') ||
+    msg.includes('ROLE_NOT_PERMITTED') ||
+    msg.includes('INVALID') ||
+    msg.includes('required') ||
+    msg.includes('must be') ||
+    msg.includes('Missing required')
+  ) {
+    const valMsg = msg.includes('CLASS_INACTIVE')
+      ? 'Cannot schedule for an inactive class.'
+      : msg.includes('ACADEMIC_YEAR_INACTIVE')
+        ? 'Cannot schedule in an inactive academic year.'
+        : msg.includes('STAFF_INACTIVE')
+          ? 'Cannot assign an inactive staff member to teaching schedule.'
+          : msg.includes('STAFF_ROLE_NOT_PERMITTED')
+            ? 'Assigned staff member must have teaching credentials/roles.'
+            : msg.includes('SUBJECT_INACTIVE')
+              ? 'Cannot assign an inactive subject.'
+              : msg.includes('PERIOD_INACTIVE')
+                ? 'Selected period is not active.'
+                : msg.includes('PERIOD_INVALID_TIMES')
+                  ? 'Period start time must precede end time.'
+                  : msg.includes('INVALID_DAY_OF_WEEK')
+                    ? 'Day of week must be Monday through Saturday.'
+                    : msg;
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: valMsg } }, 400);
+  }
+  return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: msg } }, 500);
 }
 
 // --- Overrides ---
@@ -27,7 +91,7 @@ timetableRoutes.get("/overrides", requireSharedDashboardRead, async (c) => {
     const data = await overrideService.getOverrides();
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 500);
+    return handleTimetableError(c, error);
   }
 });
 
@@ -45,7 +109,7 @@ timetableRoutes.post("/overrides", requireHodOrAdmin, async (c) => {
     const data = await overrideService.createOverride(body, actor);
     return c.json({ success: true, data }, 201);
   } catch (error: any) {
-    return c.json({ success: false, error: { code: error.message, message: error.message } }, 400);
+    return handleTimetableError(c, error);
   }
 });
 
@@ -63,7 +127,7 @@ timetableRoutes.patch("/overrides/:id", requireHodOrAdmin, async (c) => {
     const data = await overrideService.updateOverride(c.req.param("id")!, body, actor);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 400);
+    return handleTimetableError(c, error);
   }
 });
 
@@ -73,7 +137,7 @@ timetableRoutes.delete("/overrides/:id", requireHodOrAdmin, async (c) => {
     await overrideService.deleteOverride(c.req.param("id")!, actor);
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 400);
+    return handleTimetableError(c, error);
   }
 });
 
@@ -83,7 +147,13 @@ timetableRoutes.get("/", requireSharedDashboardRead, async (c) => {
   try {
     const classId = c.req.query("classId");
     const academicYearId = c.req.query("academicYearId");
-    const staffId = c.req.query("staffId");
+    const user = c.get("user") as AuthPrincipal | undefined;
+    let staffId = c.req.query("staffId");
+
+    // If neither classId nor staffId provided in query, default to authenticated user's staffId
+    if (!classId && !staffId) {
+      staffId = user?.id;
+    }
 
     if (!classId && !staffId) {
       return c.json({
@@ -91,7 +161,7 @@ timetableRoutes.get("/", requireSharedDashboardRead, async (c) => {
         error: { code: 'VALIDATION_ERROR', message: 'Provide either classId or staffId to retrieve timetable entries.' },
       }, 400);
     }
-    if (classId && staffId) {
+    if (classId && c.req.query("staffId")) {
       return c.json({
         success: false,
         error: { code: 'VALIDATION_ERROR', message: 'Provide classId or staffId, not both.' },
@@ -104,7 +174,7 @@ timetableRoutes.get("/", requireSharedDashboardRead, async (c) => {
 
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 500);
+    return handleTimetableError(c, error);
   }
 });
 
@@ -115,7 +185,7 @@ timetableRoutes.post("/", requireHodOrAdmin, async (c) => {
     const data = await service.createTimetableEntry(body, actor);
     return c.json({ success: true, data }, 201);
   } catch (error: any) {
-    return c.json({ success: false, error: { code: error.message, message: error.message } }, 409);
+    return handleTimetableError(c, error);
   }
 });
 
@@ -126,7 +196,7 @@ timetableRoutes.patch("/:id", requireHodOrAdmin, async (c) => {
     const data = await service.updateTimetableEntry(c.req.param("id")!, body, actor);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, error: { code: error.message, message: error.message } }, 409);
+    return handleTimetableError(c, error);
   }
 });
 
@@ -134,9 +204,9 @@ timetableRoutes.delete("/:id", requireHodOrAdmin, async (c) => {
   try {
     const actor = getActorFromContext(c);
     await service.deleteTimetableEntry(c.req.param("id")!, actor);
-    return c.json({ success: true });
+    return c.json({ success: true, message: 'Timetable entry deleted successfully.' });
   } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 400);
+    return handleTimetableError(c, error);
   }
 });
 
@@ -147,7 +217,7 @@ timetableRoutes.get("/stats", requireSharedDashboardRead, async (c) => {
     const data = await service.getTimetableStats(academicYearId);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 500);
+    return handleTimetableError(c, error);
   }
 });
 
@@ -158,6 +228,6 @@ timetableRoutes.get("/today", requireSharedDashboardRead, async (c) => {
     const data = await service.getTodayTimetable(academicYearId, classId);
     return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ success: false, error: { message: error.message } }, 500);
+    return handleTimetableError(c, error);
   }
 });

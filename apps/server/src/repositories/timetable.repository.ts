@@ -24,6 +24,7 @@ export class TimetableRepository {
         staffName: staff.name,
         subjectName: subjects.name,
         subjectCode: subjects.code,
+        periodNumber: periods.periodNumber,
         periodName: periods.name,
         periodStartTime: periods.startTime,
         periodEndTime: periods.endTime
@@ -32,7 +33,8 @@ export class TimetableRepository {
       .innerJoin(subjects, eq(timetables.subjectId, subjects.id))
       .innerJoin(staff, eq(timetables.staffId, staff.id))
       .innerJoin(periods, eq(timetables.periodId, periods.id))
-      .where(and(...conditions));
+      .where(and(...conditions))
+      .orderBy(periods.periodNumber);
   }
 
   async findByStaff(staffId: string, academicYearId?: string) {
@@ -44,6 +46,7 @@ export class TimetableRepository {
         id: timetables.id,
         academicYearId: timetables.academicYearId,
         classId: timetables.classId,
+        className: classes.name,
         dayOfWeek: timetables.dayOfWeek,
         periodId: timetables.periodId,
         subjectId: timetables.subjectId,
@@ -51,6 +54,7 @@ export class TimetableRepository {
         subjectName: subjects.name,
         subjectCode: subjects.code,
         periodName: periods.name,
+        periodNumber: periods.periodNumber,
         periodStartTime: periods.startTime,
         periodEndTime: periods.endTime
       })

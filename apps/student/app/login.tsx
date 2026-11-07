@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { useAuth } from '../store/AuthContext';
 import { router } from 'expo-router';
@@ -10,6 +10,12 @@ export default function LoginScreen() {
   const { login, authState } = useAuth();
   
   const isLoading = authState === 'AUTHENTICATING';
+
+  useEffect(() => {
+    if (authState === 'AUTHENTICATED') {
+      router.replace('/(tabs)');
+    }
+  }, [authState]);
 
   const handleLogin = async () => {
     const trimmedUsername = username.trim();

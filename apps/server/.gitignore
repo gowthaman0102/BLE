@@ -1,3 +1,7 @@
 node_modules
 .env
 dist
+data/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]

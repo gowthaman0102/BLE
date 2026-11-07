@@ -28,6 +28,30 @@ export class AcademicRepository {
     return result[0];
   }
 
+  async createDepartment(data: typeof departments.$inferInsert) {
+    return db.insert(departments).values(data).returning();
+  }
+
+  async updateDepartment(id: string, data: Partial<typeof departments.$inferInsert>) {
+    return db.update(departments).set({ ...data, updatedAt: new Date() }).where(eq(departments.id, id)).returning();
+  }
+
+  async deleteDepartment(id: string) {
+    return db.delete(departments).where(eq(departments.id, id)).returning();
+  }
+
+  async getDepartmentReferenceCounts(id: string) {
+    const [bCount, cCount] = await Promise.all([
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(batches).where(eq(batches.departmentId, id)),
+      db.select({ count: sql<number>`cast(count(*) as integer)` }).from(classes).where(eq(classes.departmentId, id)),
+    ]);
+
+    return {
+      batchesCount: Number(bCount[0]?.count || 0),
+      classesCount: Number(cCount[0]?.count || 0),
+    };
+  }
+
   // Academic Years
   async getAcademicYears() {
     return db.select().from(academicYears).orderBy(academicYears.startDate);

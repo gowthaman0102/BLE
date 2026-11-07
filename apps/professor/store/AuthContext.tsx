@@ -1,51 +1,81 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { AuthPrincipal } from '@smart-attendance/shared';
+import { apiClient, setAuthToken } from '../services/api/client';
+import { authStorage } from '../services/storage/authStorage';
 
-type AuthState = 'UNAUTHENTICATED' | 'AUTHENTICATING' | 'AUTHENTICATED';
+type AuthState = 'INITIALIZING' | 'UNAUTHENTICATED' | 'AUTHENTICATING' | 'AUTHENTICATED';
 
 interface AuthContextData {
   authState: AuthState;
-  user: any | null; // Replace with Staff type later
-  login: (staffCode: string) => Promise<void>;
+  user: AuthPrincipal | null;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [authState, setAuthState] = useState<AuthState>('UNAUTHENTICATED');
-  const [user, setUser] = useState<any | null>(null);
+  const [authState, setAuthState] = useState<AuthState>('INITIALIZING');
+  const [user, setUser] = useState<AuthPrincipal | null>(null);
 
   useEffect(() => {
-    // In future phases: load from SecureStore
+    async function restoreSession() {
+      try {
+        const token = await authStorage.getToken();
+        const savedUser = await authStorage.getUser();
+
+        if (token && savedUser) {
+          setAuthToken(token);
+          setUser(savedUser);
+          setAuthState('AUTHENTICATED');
+        } else {
+          setAuthState('UNAUTHENTICATED');
+        }
+      } catch (err) {
+        console.warn('Error restoring professor session:', err);
+        setAuthState('UNAUTHENTICATED');
+      }
+    }
+
+    restoreSession();
   }, []);
 
-  const login = async (staffCode: string) => {
+  const login = async (email: string, password: string) => {
     setAuthState('AUTHENTICATING');
     try {
-      if (process.env.NODE_ENV === 'test') {
-        if (staffCode === 'DEV-STAFF-001') {
-          setUser({
-            id: 'prof-123',
-            name: 'Test Professor',
-            staffCode: 'TEST-STAFF',
-            department: 'TEST',
-            role: 'STAFF'
-          });
-          setAuthState('AUTHENTICATED');
-          return;
-        }
-        throw new Error('Invalid test credentials');
+      const response = await apiClient.post<{
+        success: boolean;
+        user: AuthPrincipal;
+        token: string;
+      }>('/api/auth/login', {
+        email: email.trim().toLowerCase(),
+        password,
+      });
+
+      if (response.success && response.user && response.token) {
+        setAuthToken(response.token);
+        setUser(response.user);
+        await authStorage.setToken(response.token);
+        await authStorage.setUser(response.user);
+        setAuthState('AUTHENTICATED');
+      } else {
+        throw new Error('Authentication succeeded but failed to receive session token.');
       }
-      throw new Error('Microsoft Entra sign-in is not configured for the professor app.');
-    } catch (e) {
+    } catch (e: any) {
       setAuthState('UNAUTHENTICATED');
       throw e;
     }
   };
 
   const logout = async () => {
-    setUser(null);
-    setAuthState('UNAUTHENTICATED');
+    try {
+      await apiClient.post('/api/auth/logout', {}).catch(() => {});
+    } finally {
+      setAuthToken(null);
+      setUser(null);
+      await authStorage.clear();
+      setAuthState('UNAUTHENTICATED');
+    }
   };
 
   return (

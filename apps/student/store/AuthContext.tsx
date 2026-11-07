@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { setAuthToken } from '../services/api/client';
 import { authService } from '../services/api/authService';
+import { authStorage } from '../services/storage/authStorage';
 import { Student } from '@smart-attendance/shared';
 
-type AuthState = 'UNAUTHENTICATED' | 'AUTHENTICATING' | 'AUTHENTICATED';
+type AuthState = 'INITIALIZING' | 'UNAUTHENTICATED' | 'AUTHENTICATING' | 'AUTHENTICATED';
 
 interface AuthContextData {
   authState: AuthState;
@@ -15,12 +16,45 @@ interface AuthContextData {
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [authState, setAuthState] = useState<AuthState>('UNAUTHENTICATED');
+  const [authState, setAuthState] = useState<AuthState>('INITIALIZING');
   const [user, setUser] = useState<Student | null>(null);
 
   useEffect(() => {
-    // In future phases: load from SecureStore
-    // For now, always start unauthenticated
+    let isMounted = true;
+
+    async function restoreSession() {
+      try {
+        const [savedToken, savedUser] = await Promise.all([
+          authStorage.getToken(),
+          authStorage.getUser(),
+        ]);
+
+        if (!isMounted) return;
+
+        if (savedToken && savedUser) {
+          setAuthToken(savedToken);
+          setUser(savedUser);
+          setAuthState('AUTHENTICATED');
+        } else {
+          setAuthToken(null);
+          setUser(null);
+          setAuthState('UNAUTHENTICATED');
+        }
+      } catch (e) {
+        console.warn('Session restoration failed:', e);
+        if (isMounted) {
+          setAuthToken(null);
+          setUser(null);
+          setAuthState('UNAUTHENTICATED');
+        }
+      }
+    }
+
+    restoreSession();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const login = async (username: string, registerNumber: string) => {
@@ -30,10 +64,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Username and Register Number must match.');
       }
       
-      const { student } = await authService.studentLogin(username, registerNumber);
+      const { student, token } = await authService.studentLogin(username, registerNumber);
       
-      if (student) {
-        setAuthToken(student.registerNumber); // In this phase we use the register number as a simple token
+      if (student && token) {
+        await Promise.all([
+          authStorage.setToken(token),
+          authStorage.setUser(student),
+        ]);
+        setAuthToken(token); // Use the signed JWT returned by the server
         setUser(student);
         setAuthState('AUTHENTICATED');
       } else {
@@ -46,9 +84,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    setUser(null);
-    setAuthToken(null);
-    setAuthState('UNAUTHENTICATED');
+    try {
+      await authStorage.clear();
+    } finally {
+      setUser(null);
+      setAuthToken(null);
+      setAuthState('UNAUTHENTICATED');
+    }
   };
 
   return (

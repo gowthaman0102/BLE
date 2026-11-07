@@ -36,6 +36,7 @@ export class SessionTokenService {
       name: principal.name,
       staffCode: principal.staffCode,
       registerNumber: principal.registerNumber,
+      classId: principal.classId,
     })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
@@ -81,6 +82,7 @@ export class SessionTokenService {
         roles: ['STUDENT'],
         userType: 'STUDENT',
         registerNumber: studentUser.registerNumber,
+        classId: studentUser.classId,
       };
     }
   }

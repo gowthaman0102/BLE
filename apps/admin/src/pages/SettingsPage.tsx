@@ -29,14 +29,10 @@ export default function SettingsPage() {
   const [periodModalOpen, setPeriodModalOpen] = useState(false);
   const [editingPeriod, setEditingPeriod] = useState<Partial<Period> | null>(null);
 
-
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'periods') fetchPeriods();
-  }, [activeTab]);
+  const showMessage = (type: 'success' | 'error', text: string) => {
+    setMessage({ type, text });
+    setTimeout(() => setMessage(null), 3000);
+  };
 
   const fetchSettings = async () => {
     try {
@@ -45,7 +41,7 @@ export default function SettingsPage() {
       if (res.success) {
         setSettings(res.data);
       }
-    } catch (err: any) {
+    } catch (_err: any) {
       showMessage('error', 'Failed to load settings');
     } finally {
       setLoading(false);
@@ -66,11 +62,13 @@ export default function SettingsPage() {
     }
   };
 
+  useEffect(() => {
+    fetchSettings();
+  }, []);
 
-  const showMessage = (type: 'success' | 'error', text: string) => {
-    setMessage({ type, text });
-    setTimeout(() => setMessage(null), 3000);
-  };
+  useEffect(() => {
+    if (activeTab === 'periods') fetchPeriods();
+  }, [activeTab]);
 
   const handleSettingChange = (key: string, value: string) => {
     setSettings(prev => ({ ...prev, [key]: value }));

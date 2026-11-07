@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { StaffService } from "../services/staff.service";
 import { TimetableRepository } from "../repositories/timetable.repository";
-import { requireHodOrAdmin, requireSharedModuleAccess, requireStaffOrAdmin, requireSharedDashboardRead } from "../middlewares/auth.middleware";
+import { requireHodOrAdmin, requireSharedModuleAccess, requireStaffOrAdmin, requireSharedDashboardRead, requireRole } from "../middlewares/auth.middleware";
 import { localAuthService } from "../services/local-auth.service";
 import type { AuthPrincipal } from "@smart-attendance/shared";
 import { Buffer } from "node:buffer";
@@ -123,7 +123,7 @@ staffRoutes.get('/template/csv', requireSharedDashboardRead, (c) => {
   return c.body('staff_code,name,college_email\r\nIT001,Sample Teacher,faculty@sonatech.ac.in\r\n');
 });
 
-staffRoutes.post('/import/preview', requireHodOrAdmin, async (c) => {
+staffRoutes.post('/import/preview', requireRole('ADMIN'), async (c) => {
   try {
     const upload = await getImportFile(c);
     if (upload instanceof Response) return upload;
@@ -134,7 +134,7 @@ staffRoutes.post('/import/preview', requireHodOrAdmin, async (c) => {
   }
 });
 
-staffRoutes.post('/import/confirm', requireHodOrAdmin, async (c) => {
+staffRoutes.post('/import/confirm', requireRole('ADMIN'), async (c) => {
   try {
     const upload = await getImportFile(c);
     if (upload instanceof Response) return upload;
@@ -202,7 +202,7 @@ staffRoutes.post('/', requireHodOrAdmin, async (c) => {
       name: body.name,
       collegeEmail: body.collegeEmail,
       status: 'ACTIVE',
-      roles: ['STAFF'],
+      roles: ((c.get('user') as AuthPrincipal | undefined)?.roles?.includes('ADMIN') && Array.isArray(body.roles) && body.roles.length > 0) ? (body.roles as string[]) : ['STAFF'],
     }, getActor(c));
     return c.json({ success: true, data }, 201);
   } catch (error: unknown) {
@@ -210,10 +210,11 @@ staffRoutes.post('/', requireHodOrAdmin, async (c) => {
   }
 });
 
-staffRoutes.put('/:id', requireHodOrAdmin, async (c) => {
+const handleStaffUpdate = async (c: any) => {
   try {
+    const user = c.get('user') as AuthPrincipal | undefined;
     const body = await c.req.json() as Record<string, unknown>;
-    const update: Partial<typeof staff.$inferInsert> = {};
+    const update: Partial<typeof staff.$inferInsert> & { roles?: string[] } = {};
     for (const field of ['staffCode', 'name', 'collegeEmail'] as const) {
       if (body[field] !== undefined) {
         if (typeof body[field] !== 'string') {
@@ -221,6 +222,15 @@ staffRoutes.put('/:id', requireHodOrAdmin, async (c) => {
         }
         update[field] = body[field];
       }
+    }
+    if (body.roles !== undefined) {
+      if (!user?.roles?.includes('ADMIN')) {
+        return c.json({ success: false, error: { code: 'FORBIDDEN', message: 'Forbidden: Only administrators can update staff roles.' } }, 403);
+      }
+      if (!Array.isArray(body.roles)) {
+        return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'roles must be an array of strings.' } }, 400);
+      }
+      update.roles = body.roles as string[];
     }
     if (!Object.keys(update).length) {
       return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Provide at least one permitted field to update.' } }, 400);
@@ -230,7 +240,10 @@ staffRoutes.put('/:id', requireHodOrAdmin, async (c) => {
   } catch (error: unknown) {
     return handleStaffError(c, error);
   }
-});
+};
+
+staffRoutes.put('/:id', requireHodOrAdmin, handleStaffUpdate);
+staffRoutes.patch('/:id', requireHodOrAdmin, handleStaffUpdate);
 
 staffRoutes.patch('/:id/status', requireHodOrAdmin, async (c) => {
   try {
@@ -246,7 +259,40 @@ staffRoutes.patch('/:id/status', requireHodOrAdmin, async (c) => {
 });
 
 // Shared application users can view the actual faculty/staff directory.
-staffRoutes.get("/", requireSharedDashboardRead, async (c) => {
+staffRoutes.delete('/:id', requireRole('ADMIN'), async (c) => {
+  try {
+    await service.deleteStaff(c.req.param('id')!, getActor(c));
+    return c.json({ success: true, message: 'Staff deleted successfully.' });
+  } catch (error: unknown) {
+    return handleStaffError(c, error);
+  }
+});
+
+staffRoutes.post('/:id/roles', requireRole('ADMIN'), async (c) => {
+  try {
+    const body = await c.req.json() as { role?: string };
+    if (!body?.role || typeof body.role !== 'string') {
+      return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Role is required.' } }, 400);
+    }
+    const data = await service.assignRole(c.req.param('id')!, body.role, getActor(c));
+    return c.json({ success: true, data }, 201);
+  } catch (error: unknown) {
+    return handleStaffError(c, error);
+  }
+});
+
+staffRoutes.delete('/:id/roles/:role', requireRole('ADMIN'), async (c) => {
+  try {
+    const role = c.req.param('role')!;
+    const data = await service.removeRole(c.req.param('id')!, role, getActor(c));
+    return c.json({ success: true, data });
+  } catch (error: unknown) {
+    return handleStaffError(c, error);
+  }
+});
+
+// Shared application users can view the actual faculty/staff directory.
+staffRoutes.get("/", requireHodOrAdmin, async (c) => {
   try {
     const search = c.req.query("search");
     const status = c.req.query("status");

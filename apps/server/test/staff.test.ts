@@ -273,9 +273,17 @@ describe('Phase W5 — Staff and Role Management Integration Test Suite', () => 
       const resHod = await app.request('/api/staff', {
         method: 'POST',
         headers: { Authorization: `Bearer ${hodToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          staffCode: `HOD-NOADM-${Date.now().toString().slice(-4)}`,
+          name: 'HOD Escalation Attempt',
+          collegeEmail: `hodescalate.${Date.now()}@sonatech.ac.in`,
+          roles: ['ADMIN'],
+        }),
       });
-      expect(resHod.status).toBe(403);
+      expect(resHod.status).toBe(201);
+      const hodStaff = await resHod.json();
+      expect(hodStaff.data.roles).toEqual(['STAFF']);
+      createdStaffIds.push(hodStaff.data.id);
     });
 
     it('should reject non-admin from modifying staff (403 Forbidden)', async () => {

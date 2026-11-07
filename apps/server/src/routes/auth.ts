@@ -138,7 +138,7 @@ authRoutes.post('/login', async (c) => {
     userAgent: c.req.header('user-agent'),
   });
 
-  return c.json({ success: true, user: result.principal });
+  return c.json({ success: true, user: result.principal, token: result.token });
 });
 
 authRoutes.get('/signup-status', (c) => {
@@ -251,7 +251,7 @@ authRoutes.post('/signup', async (c) => {
 });
 
 authRoutes.post('/student/login', async (c) => {
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_STUDENT_PASSWORDLESS_LOGIN !== 'true') {
     return c.json({ success: false, error: { code: 'FORBIDDEN', message: 'Student passwordless login is disabled in production.' } }, 403);
   }
   try {
@@ -271,6 +271,7 @@ authRoutes.post('/student/login', async (c) => {
       roles: ['STUDENT'],
       userType: 'STUDENT',
       registerNumber: student.registerNumber,
+      classId: student.classId || undefined,
       microsoftUserId: student.microsoftUserId,
     };
     const token = await sessionTokenService.createSessionToken(principal);

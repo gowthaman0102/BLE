@@ -2,7 +2,21 @@ import { db } from '../db';
 import { auditLogs } from '../db/schema/audit';
 import { desc, eq, and, ilike, sql } from 'drizzle-orm';
 
-const SENSITIVE_FIELDS = ['password', 'token', 'accessToken', 'refreshToken', 'secret', 'bleToken', 'faceEmbedding'];
+const SENSITIVE_FIELDS = [
+  'password',
+  'token',
+  'accessToken',
+  'refreshToken',
+  'secret',
+  'bleToken',
+  'faceEmbedding',
+  'selfie',
+  'selfieBase64',
+  'photo',
+  'photoBase64',
+  'biometric',
+  'embedding',
+];
 
 export interface AuditLogData {
   actorId?: string;
@@ -35,12 +49,13 @@ export class AuditService {
     return sanitized;
   }
 
-  async log(data: AuditLogData) {
+  async log(data: AuditLogData, tx?: any) {
     try {
       const sanitizedOld = this.sanitizeData(data.oldValues);
       const sanitizedNew = this.sanitizeData(data.newValues);
 
-      await db.insert(auditLogs).values({
+      const client = tx || db;
+      await client.insert(auditLogs).values({
         actorId: data.actorId,
         actorName: data.actorName || 'System',
         actorRole: data.actorRole || 'SYSTEM',
@@ -55,7 +70,9 @@ export class AuditService {
       });
     } catch (error) {
       console.error('Failed to write audit log:', error);
-      // We don't throw here to avoid breaking the main transaction flow if audit fails
+      if (tx) {
+        throw error;
+      }
     }
   }
 

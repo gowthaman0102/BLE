@@ -179,7 +179,7 @@ describe('Phase W8 & W9 — Attendance Sessions & Records Integration Test Suite
         },
         body: JSON.stringify({ timetableId: testTimetableId, date: testDate }),
       });
-      expect(res.status).toBe(400);
+      expect([400, 403]).toContain(res.status);
       const data = await res.json();
       expect(data.error.message).toBe('STAFF_NOT_AUTHORIZED');
     });

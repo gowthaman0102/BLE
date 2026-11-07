@@ -40,15 +40,6 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, location, navigate]);
 
-  // Close modal on Escape key
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeModal();
-    };
-    if (showSignUpModal) document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [showSignUpModal]);
-
   const closeModal = () => {
     setShowSignUpModal(false);
     setSignupError('');
@@ -62,6 +53,15 @@ export default function LoginPage() {
     setShowSignupPw(false);
     setShowSignupConfirmPw(false);
   };
+
+  // Close modal on Escape key
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeModal();
+    };
+    if (showSignUpModal) document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [showSignUpModal]);
 
   const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

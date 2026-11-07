@@ -9,3 +9,9 @@ build/
 *.log
 .DS_Store
 Thumbs.db
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+.idea/
+.vscode/
+data/

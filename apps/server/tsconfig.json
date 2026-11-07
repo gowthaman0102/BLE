@@ -8,6 +8,7 @@
         "esModuleInterop": true,
         "skipLibCheck": true,
         "noEmit": true,
+        "ignoreDeprecations": "5.0",
         "baseUrl": ".",
         "paths": {
             "@smart-attendance/shared": ["../../packages/shared/index.ts"]

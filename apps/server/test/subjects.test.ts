@@ -622,6 +622,7 @@ describe('Phase W6 — Subject Management & Class-Subject Mapping Integration Te
         yearNumber: 2,
         regulationId: testRegulationR21Id,
         status: 'ACTIVE',
+        dataSource: 'MANUALLY_ENTERED',
       }).returning().then(r => r[0]);
       linkedSubjectId = sub.id;
       createdSubjectIds.push(sub.id);
@@ -656,6 +657,7 @@ describe('Phase W6 — Subject Management & Class-Subject Mapping Integration Te
         yearNumber: 2,
         regulationId: testRegulationR21Id,
         status: 'ACTIVE',
+        dataSource: 'MANUALLY_ENTERED',
       }).returning().then(r => r[0]);
       createdSubjectIds.push(ttSubject.id);
 
@@ -688,6 +690,7 @@ describe('Phase W6 — Subject Management & Class-Subject Mapping Integration Te
         yearNumber: 2,
         regulationId: testRegulationR21Id,
         status: 'ACTIVE',
+        dataSource: 'MANUALLY_ENTERED',
       }).returning().then(r => r[0]);
 
       const res = await app.request(`/api/subjects/${unlinkedSubject.id}`, {
@@ -729,6 +732,7 @@ describe('Phase W6 — Subject Management & Class-Subject Mapping Integration Te
         yearNumber: 2,
         regulationId: testRegulationR21Id,
         status: 'ACTIVE',
+        dataSource: 'MANUALLY_ENTERED',
       }).returning().then(r => r[0]);
       mappingSubjectYear2 = sY2.id;
       createdSubjectIds.push(sY2.id);
@@ -741,6 +745,7 @@ describe('Phase W6 — Subject Management & Class-Subject Mapping Integration Te
         yearNumber: 2,
         regulationId: testRegulationR23Id,
         status: 'ACTIVE',
+        dataSource: 'MANUALLY_ENTERED',
       }).returning().then(r => r[0]);
       mappingSubjectR23 = sR23.id;
       createdSubjectIds.push(sR23.id);
@@ -753,6 +758,7 @@ describe('Phase W6 — Subject Management & Class-Subject Mapping Integration Te
         yearNumber: 3,
         regulationId: testRegulationR21Id,
         status: 'ACTIVE',
+        dataSource: 'MANUALLY_ENTERED',
       }).returning().then(r => r[0]);
       mappingSubjectYear3 = sY3.id;
       createdSubjectIds.push(sY3.id);

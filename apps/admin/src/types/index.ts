@@ -6,6 +6,15 @@
 export type UserRole = 'ADMIN' | 'HOD' | 'DEPUTY_HOD' | 'CLASS_COUNSELOR' | 'STAFF' | 'FACULTY' | 'STUDENT';
 
 // --- Academic ---
+export interface Department {
+  id: string;
+  name: string;
+  code: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AcademicYear {
   id: string;
   name: string;
@@ -416,6 +425,8 @@ export interface LiveAttendanceStudent {
   firstDetectedAt?: string;
   lastDetectedAt?: string;
   detectionCount: number;
+  faceVerificationStatus?: RosterFaceStatus;
+  fallbackRequest?: AttendanceFallbackRequestSummary | null;
 }
 
 export interface LiveAttendanceData {
@@ -426,3 +437,140 @@ export interface LiveAttendanceData {
   percentage: number;
   students: LiveAttendanceStudent[];
 }
+
+// ============================================
+// Face Verification Contracts (Milestone F2)
+// ============================================
+
+export type FaceProfileStatus = 'NOT_ENROLLED' | 'PENDING' | 'ACTIVE' | 'REVOKED';
+
+export type FaceVerificationStatus =
+  | 'PENDING'
+  | 'VERIFIED'
+  | 'FAILED'
+  | 'NOT_CONFIGURED'
+  | 'EXPIRED'
+  | 'BLOCKED';
+
+export type FaceVerificationFailureReason =
+  | 'BLE_NOT_DETECTED'
+  | 'SESSION_NOT_ACTIVE'
+  | 'STUDENT_NOT_ENROLLED'
+  | 'PROFILE_NOT_ACTIVE'
+  | 'MAX_ATTEMPTS_EXCEEDED'
+  | 'PROVIDER_NOT_CONFIGURED'
+  | 'FACE_MISMATCH'
+  | 'LIVENESS_FAILED'
+  | 'POOR_IMAGE_QUALITY'
+  | 'NO_FACE_DETECTED'
+  | 'MULTIPLE_FACES'
+  | 'INTERNAL_ERROR';
+
+export interface StudentFaceProfile {
+  studentId: string;
+  status: FaceProfileStatus;
+  enrolledAt?: string | null;
+  enrolledByStaffId?: string | null;
+  referencePhotoKey?: string | null;
+  referencePhotoSha256?: string | null;
+  imageVersion?: number;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  revokedAt?: string | null;
+  revokedByStaffId?: string | null;
+  revocationReason?: string | null;
+  modelVersion?: string;
+  updatedAt: string;
+  faceDetectionAvailable?: boolean;
+}
+
+export interface ReferencePhotoEnrollmentResult {
+  profile: StudentFaceProfile;
+  message: string;
+}
+
+export interface FaceVerificationRequest {
+  sessionId: string;
+  selfieBase64?: string;
+  clientTimestamp?: string;
+}
+
+export interface FaceVerificationResponse {
+  success: boolean;
+  status: FaceVerificationStatus;
+  failureReason?: FaceVerificationFailureReason;
+  message: string;
+  attemptNumber: number;
+  remainingAttempts: number;
+  verifiedAt?: string | null;
+}
+
+export interface StudentFaceVerificationStatus {
+  sessionId: string;
+  bleDetected: boolean;
+  profileStatus: FaceProfileStatus;
+  verificationStatus: FaceVerificationStatus;
+  attemptCount: number;
+  remainingAttempts: number;
+  isEligibleForVerification: boolean;
+  verifiedAt?: string | null;
+}
+
+export type RosterFaceStatus =
+  | 'NOT_REQUIRED'
+  | 'BLE_DETECTED'
+  | 'PENDING'
+  | 'VERIFIED'
+  | 'FAILED'
+  | 'NOT_ENROLLED'
+  | 'MANUAL_CORRECTION'
+  | 'FALLBACK_PENDING';
+
+// ============================================
+// Milestone F7 - Audited Fallback Contracts
+// ============================================
+
+export type AttendanceFallbackReason =
+  | 'CAMERA_PERMISSION_DENIED'
+  | 'CAMERA_UNAVAILABLE'
+  | 'LIVENESS_FAILED'
+  | 'LIVENESS_EXPIRED'
+  | 'FACE_MISMATCH'
+  | 'BLE_UNAVAILABLE'
+  | 'TECHNICAL_ISSUE';
+
+export type AttendanceFallbackStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface AttendanceFallbackRequestSummary {
+  id: string;
+  reasonCategory: AttendanceFallbackReason;
+  explanation?: string | null;
+  status: AttendanceFallbackStatus;
+  createdAt: string;
+}
+
+export interface AttendanceFallbackRequest {
+  id: string;
+  sessionId: string;
+  studentId: string;
+  studentName?: string;
+  registerNumber?: string;
+  reasonCategory: AttendanceFallbackReason;
+  explanation?: string | null;
+  status: AttendanceFallbackStatus;
+  reviewedByStaffId?: string | null;
+  reviewedByName?: string | null;
+  reviewedAt?: string | null;
+  reviewNotes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResolveFallbackRequestInput {
+  resolution: 'APPROVED' | 'REJECTED';
+  notes?: string;
+  newStatus?: 'PRESENT' | 'ABSENT' | 'LATE' | 'MANUAL';
+}
+

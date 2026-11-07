@@ -56,13 +56,23 @@ export const staffService = {
     return res.data;
   },
 
-  createStaff: async (data: Pick<Staff, 'staffCode' | 'name' | 'collegeEmail'>) => {
+  createStaff: async (data: Pick<Staff, 'staffCode' | 'name' | 'collegeEmail'> & { roles?: string[] }) => {
     const res = await api.post<{ data: Staff }>('/api/staff', data);
     return res.data;
   },
 
-  updateStaff: async (id: string, data: Partial<Pick<Staff, 'staffCode' | 'name' | 'collegeEmail'>>) => {
+  updateStaff: async (id: string, data: Partial<Pick<Staff, 'staffCode' | 'name' | 'collegeEmail'>> & { roles?: string[] }) => {
     const res = await api.put<{ data: Staff }>(`/api/staff/${id}`, data);
+    return res.data;
+  },
+
+  deleteStaff: async (id: string) => {
+    const res = await api.delete<{ success: boolean; message?: string }>(`/api/staff/${id}`);
+    return res;
+  },
+
+  getRoles: async () => {
+    const res = await api.get<{ data: Array<{ id: string; name: string; description: string }> }>('/api/roles');
     return res.data;
   },
 
@@ -110,7 +120,7 @@ export const staffService = {
   },
 
   registerStaffRequest: async (data: { name: string; email: string; password: string; staffCode?: string; department?: string }) => {
-    const res = await api.post<{ success: boolean; message: string }>('/api/auth/staff-register', data);
+    const res = await api.post<{ success: boolean; message: string }>('/auth/staff-register', data);
     return res;
   },
 
@@ -143,3 +153,4 @@ export const staffService = {
     return res;
   }
 };
+

@@ -1,0 +1,144 @@
+services:
+  # ==============================================================================
+  # 1. Database Service (PostgreSQL 16)
+  # Isolated to the internal network — never exposed on public host ports.
+  # If connecting to an external database (e.g., AWS RDS / Neon / Supabase),
+  # this service can be commented out and DATABASE_URL set accordingly.
+  # ==============================================================================
+  db:
+    image: postgres:16-alpine
+    container_name: smart-attendance-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-smart_attendance}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be provided in environment}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-smart_attendance}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ==============================================================================
+  # 2. Backend Server (Hono / Node.js)
+  # Multi-stage production container running as non-root user 'node'.
+  # ==============================================================================
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    container_name: smart-attendance-server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-smart_attendance}
+      ALLOW_LOCAL_DATABASE_IN_PROD: "true"
+      JWT_SECRET: "${JWT_SECRET:?Error: JWT_SECRET must be provided with at least 32 characters}"
+      CORS_ORIGIN: "${CORS_ORIGIN:?Error: CORS_ORIGIN must be explicitly configured}"
+      COLLEGE_EMAIL_DOMAIN: ${COLLEGE_EMAIL_DOMAIN:-sonatech.ac.in}
+      ATTENDANCE_START_EARLY_MINUTES: ${ATTENDANCE_START_EARLY_MINUTES:-20}
+      AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX:-10}
+      AUTH_RATE_LIMIT_WINDOW_SECONDS: ${AUTH_RATE_LIMIT_WINDOW_SECONDS:-60}
+      ALLOW_STUDENT_PASSWORDLESS_LOGIN: ${ALLOW_STUDENT_PASSWORDLESS_LOGIN:-true}
+      ENABLE_DEMO_SIGNUP: "false"
+      FACE_MATCHING_PROVIDER: ${FACE_MATCHING_PROVIDER:-NOT_CONFIGURED}
+      FACE_MATCH_THRESHOLD: ${FACE_MATCH_THRESHOLD:-0.40}
+      FACE_MIN_CONFIDENCE: ${FACE_MIN_CONFIDENCE:-0.60}
+      PYTHON_PATH: ${PYTHON_PATH:-python3}
+    networks:
+      - internal
+      - public
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ==============================================================================
+  # 3. Admin Web Application (React / Vite on Nginx)
+  # Static asset delivery with client-side SPA routing and asset caching.
+  # ==============================================================================
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+      args:
+        # Default empty string enables relative /api requests routed by the gateway
+        VITE_API_URL: ${VITE_API_URL:-}
+    container_name: smart-attendance-admin
+    restart: unless-stopped
+    networks:
+      - public
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ==============================================================================
+  # 4. Gateway Reverse Proxy (Nginx)
+  # Single entry-point for HTTP (80) and HTTPS (443) traffic.
+  # Routes /api/* to backend server and /* to admin frontend.
+  # ==============================================================================
+  gateway:
+    image: nginx:alpine-slim
+    container_name: smart-attendance-gateway
+    restart: unless-stopped
+    ports:
+      - "${PORT_HTTP:-80}:80"
+      - "${PORT_HTTPS:-443}:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot_www:/var/www/certbot:ro
+      - certbot_conf:/etc/letsencrypt:ro
+    depends_on:
+      server:
+        condition: service_healthy
+      admin:
+        condition: service_healthy
+    networks:
+      - public
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+# ==============================================================================
+# Persistent Named Volumes
+# ==============================================================================
+volumes:
+  postgres_data:
+    name: smart-attendance-postgres-data
+  certbot_www:
+    name: smart-attendance-certbot-www
+  certbot_conf:
+    name: smart-attendance-certbot-conf
+
+# ==============================================================================
+# Networks
+# ==============================================================================
+networks:
+  # Internal network: isolated for database and backend
+  internal:
+    name: smart-attendance-internal
+    internal: true
+  # Public network: accessible by gateway reverse proxy
+  public:
+    name: smart-attendance-public
+

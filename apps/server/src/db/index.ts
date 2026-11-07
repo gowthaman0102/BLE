@@ -13,6 +13,7 @@ import * as attendanceBleTokensSchema from './schema/attendance-ble-tokens';
 import * as auditSchema from './schema/audit';
 import * as settingsSchema from './schema/settings';
 import * as authSchema from './schema/auth';
+import * as faceVerificationSchema from './schema/face-verification';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -23,7 +24,7 @@ if (process.env.NODE_ENV === 'test') {
   const databaseUrl = new URL(connectionString);
   const databaseName = decodeURIComponent(databaseUrl.pathname.slice(1));
   if (
-    !['localhost', '127.0.0.1', '::1'].includes(databaseUrl.hostname) ||
+    !['localhost', '127.0.0.1', '::1', '[::1]'].includes(databaseUrl.hostname) ||
     !databaseName.endsWith('_test')
   ) {
     throw new Error('Refusing to run server tests against a non-loopback database whose name does not end in _test.');
@@ -32,4 +33,4 @@ if (process.env.NODE_ENV === 'test') {
 
 // Disable prefetch as it is not supported for "Transaction" pool mode
 export const client = postgres(connectionString, { prepare: false });
-export const db = drizzle(client, { schema: { ...academicSchema, ...studentsSchema, ...staffSchema, ...subjectsSchema, ...timetableSchema, ...attendanceSchema, ...attendanceRecordsSchema, ...studentBleDevicesSchema, ...attendanceBleTokensSchema, ...auditSchema, ...settingsSchema, ...authSchema } });
+export const db = drizzle(client, { schema: { ...academicSchema, ...studentsSchema, ...staffSchema, ...subjectsSchema, ...timetableSchema, ...attendanceSchema, ...attendanceRecordsSchema, ...studentBleDevicesSchema, ...attendanceBleTokensSchema, ...auditSchema, ...settingsSchema, ...authSchema, ...faceVerificationSchema } });

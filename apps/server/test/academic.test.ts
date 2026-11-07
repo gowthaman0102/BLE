@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { msAuthService } from '../src/services/session-token.service';
 import { db } from '../src/db';
 import { departments, academicYears, batches, regulations, classes } from '../src/db/schema/academic';
+import { students } from '../src/db/schema/students';
 import { auditLogs } from '../src/db/schema/audit';
 import { staff, roles, staffRoles } from '../src/db/schema/staff';
 import { eq, desc } from 'drizzle-orm';
@@ -37,18 +38,46 @@ describe('Phase W3 — Academic Master Data Integration Test Suite', () => {
     }
     itDepartmentId = dept.id;
 
-    // Fetch existing seeded data for reference tests
-    const seededAY = await db.select().from(academicYears).where(eq(academicYears.isCurrent, true)).then(r => r[0]);
-    if (seededAY) activeAcademicYearId = seededAY.id;
+    // Ensure a reference class exists in the IT department for constraint testing
+    let itClass = await db.select().from(classes).where(eq(classes.departmentId, itDepartmentId)).limit(1).then(r => r[0]);
+    if (!itClass) {
+      let ay = await db.select().from(academicYears).where(eq(academicYears.isCurrent, true)).then(r => r[0]);
+      if (!ay) {
+        ay = await db.insert(academicYears).values({ name: 'AY-Ref-Test', startDate: new Date('2026-06-01'), endDate: new Date('2027-05-31'), isCurrent: true, status: 'ACTIVE' }).returning().then(r => r[0]);
+      }
+      let reg = await db.select().from(regulations).limit(1).then(r => r[0]);
+      if (!reg) {
+        reg = await db.insert(regulations).values({ name: 'R-Ref-Test', year: 2026, status: 'ACTIVE' }).returning().then(r => r[0]);
+      }
+      let b = await db.select().from(batches).where(eq(batches.departmentId, itDepartmentId)).limit(1).then(r => r[0]);
+      if (!b) {
+        b = await db.insert(batches).values({ name: 'IT-Batch-Ref-Test', departmentId: itDepartmentId, startYear: 2024, endYear: 2028, status: 'ACTIVE' }).returning().then(r => r[0]);
+      }
+      itClass = await db.insert(classes).values({
+        name: 'I IT-REF-TEST',
+        departmentId: itDepartmentId,
+        academicYearId: ay.id,
+        batchId: b.id,
+        regulationId: reg.id,
+        yearNumber: 1,
+        section: 'Z',
+        status: 'ACTIVE',
+      }).returning().then(r => r[0]);
+    }
+    activeClassId = itClass.id;
+    activeBatchId = itClass.batchId;
+    activeAcademicYearId = itClass.academicYearId;
+    activeRegulationId = itClass.regulationId;
 
-    const seededBatch = await db.select().from(batches).limit(1).then(r => r[0]);
-    if (seededBatch) activeBatchId = seededBatch.id;
-
-    const seededReg = await db.select().from(regulations).limit(1).then(r => r[0]);
-    if (seededReg) activeRegulationId = seededReg.id;
-
-    const seededClass = await db.select().from(classes).limit(1).then(r => r[0]);
-    if (seededClass) activeClassId = seededClass.id;
+    const hasStudent = await db.select().from(students).where(eq(students.classId, itClass.id)).limit(1).then(r => r[0]);
+    if (!hasStudent) {
+      await db.insert(students).values({
+        registerNumber: `REF-${Date.now().toString().slice(-6)}`,
+        name: 'Ref Student',
+        collegeEmail: `ref.student.${Date.now()}@sonatech.ac.in`,
+        classId: itClass.id,
+      });
+    }
 
     // Ensure roles exist
     let rAdmin = await db.select().from(roles).where(eq(roles.name, 'ADMIN')).then(r => r[0]);

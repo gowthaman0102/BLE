@@ -19,6 +19,10 @@ class ApiClient {
     if (!isFormData) {
       defaultHeaders['Content-Type'] = 'application/json';
     }
+    const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
+    if (token) {
+      defaultHeaders['Authorization'] = `Bearer ${token}`;
+    }
     const config: RequestInit = {
       headers: {
         ...defaultHeaders,
@@ -87,7 +91,12 @@ class ApiClient {
 
   async download(endpoint: string): Promise<Blob> {
     try {
-      const response = await fetch(`${this.baseUrl}${endpoint}`, { credentials: 'include' });
+      const headers: Record<string, string> = {};
+      const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const response = await fetch(`${this.baseUrl}${endpoint}`, { headers, credentials: 'include' });
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null);
         throw {
@@ -121,8 +130,11 @@ class ApiClient {
     });
   }
 
-  async delete<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+  async delete<T>(endpoint: string, data?: unknown): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'DELETE',
+      body: data ? JSON.stringify(data) : undefined,
+    });
   }
 }
 

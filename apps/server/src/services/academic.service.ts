@@ -1,5 +1,5 @@
 import { AcademicRepository } from '../repositories/academic.repository';
-import { academicYears, batches, regulations, classes } from '../db/schema/academic';
+import { departments, academicYears, batches, regulations, classes } from '../db/schema/academic';
 import { AuditService } from './audit.service';
 
 export interface AuditActor {
@@ -22,6 +22,126 @@ export class AcademicService {
   // --- Departments ---
   async getDepartments() {
     return this.repo.getDepartments();
+  }
+
+  async getDepartmentById(id: string) {
+    return this.repo.getDepartmentById(id);
+  }
+
+  async createDepartment(data: typeof departments.$inferInsert, actor?: AuditActor) {
+    if (!data.name || data.name.trim() === '') {
+      throw new Error('Department name is required.');
+    }
+
+    if (!data.code || data.code.trim() === '') {
+      throw new Error('Department code is required.');
+    }
+
+    const code = data.code.trim().toUpperCase();
+    const existing = await this.repo.getDepartmentByCode(code);
+    if (existing) {
+      throw new Error('Department with this code already exists.');
+    }
+
+    const [created] = await this.repo.createDepartment({
+      ...data,
+      name: data.name.trim(),
+      code,
+      status: data.status || 'ACTIVE',
+    });
+
+    await this.audit.log({
+      actorId: actor?.actorId,
+      actorName: actor?.actorName,
+      actorRole: actor?.actorRole,
+      action: 'CREATE_DEPARTMENT',
+      entityType: 'DEPARTMENT',
+      entityId: created.id,
+      description: `Created department "${created.name}" (${created.code})`,
+      newValues: created,
+      ipAddress: actor?.ipAddress,
+      userAgent: actor?.userAgent,
+    });
+
+    return created;
+  }
+
+  async updateDepartment(id: string, data: Partial<typeof departments.$inferInsert>, actor?: AuditActor) {
+    const existing = await this.repo.getDepartmentById(id);
+    if (!existing) {
+      throw new Error('Department not found');
+    }
+
+    if (data.name !== undefined && data.name.trim() === '') {
+      throw new Error('Department name cannot be empty.');
+    }
+
+    if (data.code !== undefined) {
+      if (data.code.trim() === '') {
+        throw new Error('Department code cannot be empty.');
+      }
+      const code = data.code.trim().toUpperCase();
+      const dup = await this.repo.getDepartmentByCode(code);
+      if (dup && dup.id !== id) {
+        throw new Error('Department with this code already exists.');
+      }
+      data.code = code;
+    }
+
+    if (data.name) {
+      data.name = data.name.trim();
+    }
+
+    const [updated] = await this.repo.updateDepartment(id, data);
+
+    await this.audit.log({
+      actorId: actor?.actorId,
+      actorName: actor?.actorName,
+      actorRole: actor?.actorRole,
+      action: 'UPDATE_DEPARTMENT',
+      entityType: 'DEPARTMENT',
+      entityId: id,
+      description: `Updated department "${updated.name}" (${updated.code})`,
+      oldValues: existing,
+      newValues: updated,
+      ipAddress: actor?.ipAddress,
+      userAgent: actor?.userAgent,
+    });
+
+    return updated;
+  }
+
+  async deleteDepartment(id: string, actor?: AuditActor) {
+    const existing = await this.repo.getDepartmentById(id);
+    if (!existing) {
+      throw new Error('Department not found');
+    }
+
+    const refs = await this.repo.getDepartmentReferenceCounts(id);
+    const issues: string[] = [];
+    if (refs.batchesCount > 0) issues.push(`${refs.batchesCount} batch(es)`);
+    if (refs.classesCount > 0) issues.push(`${refs.classesCount} class(es)`);
+
+    if (issues.length > 0) {
+      throw new Error(`Cannot delete department: ${issues.join(', ')} are associated with it. Please deactivate the department instead.`);
+    }
+
+    const [deleted] = await this.repo.deleteDepartment(id);
+
+    await this.audit.log({
+      actorId: actor?.actorId,
+      actorName: actor?.actorName,
+      actorRole: actor?.actorRole,
+      action: 'DELETE_DEPARTMENT',
+      entityType: 'DEPARTMENT',
+      entityId: id,
+      description: `Deleted department "${existing.name}" (${existing.code})`,
+      oldValues: existing,
+      ipAddress: actor?.ipAddress,
+      userAgent: actor?.userAgent,
+    });
+
+    return deleted;
   }
 
   async getDefaultDepartmentId(departmentId?: string): Promise<string> {
@@ -197,8 +317,7 @@ export class AcademicService {
       throw new Error('Start year must be less than end year.');
     }
 
-    const departmentId = data.departmentId;
-    if (!departmentId) throw new Error('Department is required for a batch.');
+    const departmentId = await this.getDefaultDepartmentId(data.departmentId);
     const department = await this.repo.getDepartmentById(departmentId);
     if (!department || department.status !== 'ACTIVE') throw new Error('Active department not found.');
     data.departmentId = departmentId;
@@ -441,8 +560,7 @@ export class AcademicService {
       throw new Error('Regulation is required.');
     }
 
-    if (!data.departmentId) throw new Error('Department is required for a class.');
-    const departmentId = data.departmentId;
+    const departmentId = await this.getDefaultDepartmentId(data.departmentId);
     await this.validateClassReferences(departmentId, data.academicYearId, data.batchId, data.regulationId);
     const section = data.section.trim().toUpperCase();
 
@@ -506,7 +624,10 @@ export class AcademicService {
     if (!section) {
       throw new Error('Section cannot be empty.');
     }
-    await this.validateClassReferences(deptId, acYearId, batchId, regulationId);
+    const isChangingReferences = Boolean(data.departmentId || data.academicYearId || data.batchId || data.regulationId);
+    if (isChangingReferences) {
+      await this.validateClassReferences(deptId, acYearId, batchId, regulationId);
+    }
 
     if (data.yearNumber !== undefined || data.section !== undefined || data.departmentId || data.academicYearId) {
       const existing = await this.repo.getClassByUniqueConstraint(deptId, acYearId, yearNumber, section);

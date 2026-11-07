@@ -14,6 +14,14 @@ export interface AttendanceRecordFilter {
   status?: string;
 }
 
+export interface AttendanceCorrectionFilter {
+  recordId?: string;
+  sessionId?: string;
+  classId?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export class AttendanceRecordRepository {
   async getRecords(filter: AttendanceRecordFilter = {}) {
     const conditions = [];
@@ -149,9 +157,10 @@ export class AttendanceRecordRepository {
     status: 'PRESENT' | 'ABSENT' | 'LATE' | 'MANUAL';
     source: 'BLE' | 'MANUAL';
     markedBy?: string;
-  }) {
+  }, tx?: any) {
+    const client = tx || db;
     const nowStr = new Date().toISOString();
-    return await db
+    return await client
       .insert(attendanceRecords)
       .values({
         attendanceSessionId: data.attendanceSessionId,
@@ -171,7 +180,7 @@ export class AttendanceRecordRepository {
         },
       })
       .returning()
-      .then((r) => r[0]);
+      .then((r: any) => r[0]);
   }
 
   async createCorrection(data: {
@@ -180,8 +189,11 @@ export class AttendanceRecordRepository {
     newStatus: string;
     reason: string;
     correctedBy: string;
-  }) {
-    return await db
+    isPostClosure?: boolean;
+    fallbackRequestId?: string;
+  }, tx?: any) {
+    const client = tx || db;
+    return await client
       .insert(attendanceCorrections)
       .values({
         attendanceRecordId: data.attendanceRecordId,
@@ -189,32 +201,63 @@ export class AttendanceRecordRepository {
         newStatus: data.newStatus,
         reason: data.reason,
         correctedBy: data.correctedBy,
+        isPostClosure: data.isPostClosure || false,
+        fallbackRequestId: data.fallbackRequestId || null,
       })
       .returning()
-      .then((r) => r[0]);
+      .then((r: any) => r[0]);
   }
 
-  async getCorrections(recordId?: string) {
-    const conditions = [];
-    if (recordId) {
-      conditions.push(eq(attendanceCorrections.attendanceRecordId, recordId));
-    }
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  async getCorrections(filter?: string | AttendanceCorrectionFilter) {
+    const opts: AttendanceCorrectionFilter =
+      typeof filter === "string" ? { recordId: filter } : filter || {};
 
-    return await db
+    const conditions = [];
+    if (opts.recordId) {
+      conditions.push(eq(attendanceCorrections.attendanceRecordId, opts.recordId));
+    }
+    if (opts.sessionId) {
+      conditions.push(eq(attendanceRecords.attendanceSessionId, opts.sessionId));
+    }
+    if (opts.classId) {
+      conditions.push(eq(students.classId, opts.classId));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const limitVal = opts.limit && opts.limit > 0 ? Math.min(opts.limit, 200) : 100;
+
+    let query = db
       .select({
         id: attendanceCorrections.id,
         attendanceRecordId: attendanceCorrections.attendanceRecordId,
+        sessionId: attendanceRecords.attendanceSessionId,
+        sessionDate: attendanceSessions.sessionDate,
+        studentId: attendanceRecords.studentId,
+        studentName: students.name,
+        registerNumber: students.registerNumber,
+        classId: students.classId,
         previousStatus: attendanceCorrections.previousStatus,
         newStatus: attendanceCorrections.newStatus,
         reason: attendanceCorrections.reason,
         correctedByStaffId: attendanceCorrections.correctedBy,
         correctedByName: staff.name,
+        isPostClosure: attendanceCorrections.isPostClosure,
+        fallbackRequestId: attendanceCorrections.fallbackRequestId,
         createdAt: attendanceCorrections.createdAt,
       })
       .from(attendanceCorrections)
+      .innerJoin(attendanceRecords, eq(attendanceCorrections.attendanceRecordId, attendanceRecords.id))
+      .innerJoin(students, eq(attendanceRecords.studentId, students.id))
+      .innerJoin(attendanceSessions, eq(attendanceRecords.attendanceSessionId, attendanceSessions.id))
       .innerJoin(staff, eq(attendanceCorrections.correctedBy, staff.id))
       .where(whereClause)
-      .orderBy(desc(attendanceCorrections.createdAt));
+      .orderBy(desc(attendanceCorrections.createdAt))
+      .limit(limitVal);
+
+    if (opts.offset && opts.offset > 0) {
+      query = (query as any).offset(opts.offset);
+    }
+
+    return await query;
   }
 }

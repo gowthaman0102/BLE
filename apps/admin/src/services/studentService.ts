@@ -1,5 +1,5 @@
 import api from './api';
-import type { Student } from '../types';
+import type { Student, StudentFaceProfile, FaceProfileStatus } from '../types';
 
 export interface StudentImportRow {
   rowNumber: number;
@@ -31,6 +31,7 @@ export const studentService = {
   async getStudents(params: {
     search?: string;
     classId?: string;
+    departmentId?: string;
     batchId?: string;
     status?: string;
     page?: number;
@@ -56,6 +57,11 @@ export const studentService = {
     return response.data;
   },
 
+  async deleteStudent(id: string) {
+    const response = await api.delete<{ success: boolean; message?: string }>(`/api/students/${id}`);
+    return response;
+  },
+
   async updateStudentStatus(id: string, status: Student['status']) {
     const response = await api.patch<{ data: Student }>(`/api/students/${id}/status`, { status });
     return response.data;
@@ -76,4 +82,40 @@ export const studentService = {
   },
 
   downloadTemplate: (format: 'csv' | 'xlsx' = 'csv') => api.download(`/api/students/import/template?format=${format}`),
+
+  async getFaceProfile(studentId: string) {
+    const response = await api.get<{ data: StudentFaceProfile }>(`/api/students/${studentId}/face-profile`);
+    return response.data;
+  },
+
+  async updateFaceProfileStatus(studentId: string, status: FaceProfileStatus, reason?: string) {
+    const response = await api.patch<{ data: StudentFaceProfile }>(`/api/students/${studentId}/face-profile/status`, {
+      status,
+      reason,
+    });
+    return response.data;
+  },
+
+  async uploadReferencePhoto(studentId: string, file: File, reason?: string) {
+    const form = new FormData();
+    form.append('photo', file);
+    if (reason) form.append('reason', reason);
+    const response = await api.postForm<{ success: boolean; data: StudentFaceProfile; message: string }>(
+      `/api/students/${studentId}/face-profile/reference-photo`,
+      form
+    );
+    return response.data;
+  },
+
+  async getReferencePhotoBlob(studentId: string): Promise<Blob> {
+    return api.download(`/api/students/${studentId}/face-profile/reference-photo`);
+  },
+
+  async revokeReferencePhoto(studentId: string, reason?: string) {
+    const response = await api.delete<{ success: boolean; data: StudentFaceProfile; message: string }>(
+      `/api/students/${studentId}/face-profile/reference-photo`,
+      reason ? { reason } : undefined
+    );
+    return response.data;
+  },
 };

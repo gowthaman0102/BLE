@@ -6,6 +6,7 @@ import { db } from '../db';
 import { classCounselors } from '../db/schema/staff';
 import { eq, and } from 'drizzle-orm';
 import type { UserRole, AuthPrincipal } from '@smart-attendance/shared';
+import { getConfig } from '../config/env';
 
 // Extend Hono Context Variables
 declare module 'hono' {
@@ -26,7 +27,15 @@ export const authenticate = async (c: Context, next: Next) => {
     if (adminToken) {
       if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(c.req.method)) {
         const requestOrigin = c.req.header('origin');
-        if (!requestOrigin || requestOrigin !== (process.env.CORS_ORIGIN || 'http://localhost:5173')) {
+        const config = getConfig();
+        const isAllowedOrigin = requestOrigin && (
+          config.corsOrigins.includes(requestOrigin) ||
+          (!config.isProduction && (
+            requestOrigin.startsWith('http://localhost:') ||
+            requestOrigin.startsWith('http://127.0.0.1:')
+          ))
+        );
+        if (!isAllowedOrigin) {
           return c.json({ success: false, error: { code: 'CSRF_REJECTED', message: 'Request origin is not allowed.' } }, 403);
         }
       }
@@ -34,7 +43,14 @@ export const authenticate = async (c: Context, next: Next) => {
     } else {
       const token = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length).trim() : undefined;
       if (token) {
-        principal = await sessionTokenService.verifySessionToken(token);
+        try {
+          principal = await sessionTokenService.verifySessionToken(token);
+        } catch {
+          principal = null;
+        }
+        if (!principal) {
+          principal = await localAuthService.verifySession(token);
+        }
       }
     }
 

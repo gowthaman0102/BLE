@@ -159,7 +159,7 @@ describe('Local HOD authentication and management authorization', () => {
     expect(academicYears.status).toBe(200);
 
     expect((await app.request('/api/students', { headers: { Cookie: cookie! } })).status).toBe(200);
-    expect((await app.request('/api/staff', { headers: { Cookie: cookie! } })).status).toBe(200);
+    expect((await app.request('/api/staff', { headers: { Cookie: cookie! } })).status).toBe(403);
     expect((await app.request('/api/students/import/template', { headers: { Cookie: cookie! } })).status).toBe(200);
     expect((await app.request('/api/staff/import/template', { headers: { Cookie: cookie! } })).status).toBe(200);
     const attendanceWrite = await app.request('/api/attendance/sessions/start', {
@@ -187,10 +187,11 @@ describe('Local HOD authentication and management authorization', () => {
         collegeEmail: `faculty-created.${randomUUID()}@${TEST_COLLEGE_DOMAIN}`,
       }),
     });
-    expect(facultyStaffCreate.status).toBe(201);
-    const createdStaff = await facultyStaffCreate.json();
-    expect(createdStaff.data.roles).toEqual(['STAFF']);
-    createdStaffIds.push(createdStaff.data.id);
+    expect(facultyStaffCreate.status).toBe(403);
+    expect((await facultyStaffCreate.json()).error.code).toBe('FORBIDDEN');
+
+
+
 
     const login = await app.request('/api/auth/login', {
       method: 'POST',
@@ -261,7 +262,7 @@ describe('Local HOD authentication and management authorization', () => {
     const { cookie } = await signIn();
     const response = await app.request('/api/auth/microsoft', {
       method: 'POST',
-      headers: { Cookie: cookie! },
+      headers: { Cookie: cookie!, Origin: 'http://localhost:5173' },
     });
     expect(response.status).toBe(404);
   });

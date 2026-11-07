@@ -1,0 +1,9 @@
+{
+  "name": "expo-ble-peripheral",
+  "platforms": ["android"],
+  "android": {
+    "modules": [
+      "expo.modules.bleperipheral.ExpoBlePeripheralModule"
+    ]
+  }
+}

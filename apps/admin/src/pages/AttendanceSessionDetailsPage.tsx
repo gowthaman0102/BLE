@@ -311,7 +311,27 @@ export default function AttendanceSessionDetailsPage() {
                   </Badge>
                 ),
               },
-              { key: 'source', label: 'Source', render: (val) => (val as string) || '-' },
+              {
+                key: 'source',
+                label: 'Source / Verification',
+                render: (val, row: LiveAttendanceStudent) => (
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {val === 'MANUAL' ? (
+                      <Badge variant="warning">MANUAL</Badge>
+                    ) : val === 'BLE' ? (
+                      <Badge variant="info">BLE</Badge>
+                    ) : (
+                      <span>-</span>
+                    )}
+                    {row.faceVerificationStatus === 'FALLBACK_PENDING' && (
+                      <Badge variant="warning">FALLBACK REQUESTED</Badge>
+                    )}
+                    {row.faceVerificationStatus === 'VERIFIED' && (
+                      <Badge variant="success">FACE VERIFIED</Badge>
+                    )}
+                  </div>
+                ),
+              },
               {
                 key: 'firstDetectedAt',
                 label: 'First Detected',

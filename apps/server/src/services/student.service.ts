@@ -2,7 +2,7 @@ import { StudentRepository } from '../repositories/student.repository';
 import { students } from '../db/schema/students';
 import { Buffer } from 'buffer';
 import { AuditService } from './audit.service';
-import { parseTabularImport } from './tabular-import';
+import { parseTabularImport, TabularImportError } from './tabular-import';
 
 export interface AuditActor {
   actorId?: string;
@@ -355,5 +355,34 @@ export class StudentService {
       userAgent: actor?.userAgent,
     });
     return { total: results.length, created, skipped, failed: 0, rows: results };
+  }
+
+  async confirmImportData(rows: any[], actor?: AuditActor) {
+    const hasErrors = rows.some((row) => row.isValid === false || (Array.isArray(row.errors) && row.errors.length > 0));
+    if (hasErrors) {
+      throw new TabularImportError('Cannot import file with errors. Please fix all errors before confirming.');
+    }
+    const candidates = rows.filter((r) => r.isValid && r.classId);
+    const createdRows = await this.repo.bulkCreateStudentsWithConflicts(candidates.map((row) => ({
+      registerNumber: row.registerNumber.toUpperCase(),
+      name: row.name.trim(),
+      collegeEmail: row.collegeEmail.toLowerCase(),
+      classId: row.classId,
+      status: 'ACTIVE' as const,
+    })));
+    const created = createdRows.length;
+    const skipped = rows.length - created;
+    await this.audit.log({
+      actorId: actor?.actorId,
+      actorName: actor?.actorName,
+      actorRole: actor?.actorRole,
+      action: 'BULK_IMPORT_STUDENTS',
+      entityType: 'STUDENT',
+      description: `Student import finished: ${created} created, ${skipped} skipped.`,
+      newValues: { total: rows.length, created, skipped },
+      ipAddress: actor?.ipAddress,
+      userAgent: actor?.userAgent,
+    });
+    return { total: rows.length, created, skipped, failed: 0, rows: createdRows };
   }
 }

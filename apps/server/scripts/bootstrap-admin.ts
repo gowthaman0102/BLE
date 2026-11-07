@@ -52,13 +52,14 @@ function askHidden(label: string): Promise<string> {
   });
 }
 
-async function main() {
-  const name = await ask('HOD full name: ');
-  const email = (await ask('HOD college email: ')).toLowerCase();
-  const staffCode = (await ask('HOD staff code: ')).toUpperCase();
-  const password = await askHidden('Password (minimum 12 characters): ');
-  const confirmation = await askHidden('Confirm password: ');
-
+export function validateAdminBootstrapInputs(input: {
+  name: string;
+  email: string;
+  staffCode: string;
+  password: string;
+  confirmation: string;
+}) {
+  const { name, email, staffCode, password, confirmation } = input;
   if (name.length < 2 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !/^[A-Z0-9_-]{3,30}$/.test(staffCode)) {
     throw new Error('Enter a valid full name, email address, and staff code.');
   }
@@ -66,6 +67,16 @@ async function main() {
   if (password.length < 12 || Buffer.byteLength(password, 'utf8') > 72) {
     throw new Error('Password must be at least 12 characters and no more than 72 UTF-8 bytes.');
   }
+}
+
+async function main() {
+  const name = await ask('HOD full name: ');
+  const email = (await ask('HOD college email: ')).toLowerCase();
+  const staffCode = (await ask('HOD staff code: ')).toUpperCase();
+  const password = await askHidden('Password (minimum 12 characters): ');
+  const confirmation = await askHidden('Confirm password: ');
+
+  validateAdminBootstrapInputs({ name, email, staffCode, password, confirmation });
 
   const hashedPassword = await LocalAuthService.hashPassword(password);
   const created = await db.transaction(async (tx) => {
@@ -106,12 +117,15 @@ async function main() {
   console.log('Initial HOD account created.');
 }
 
-main()
-  .catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : 'HOD setup failed.';
-    console.error(message);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await client.end();
-  });
+const isDirectRun = process.argv[1]?.replace(/\\/g, '/').endsWith('scripts/bootstrap-admin.ts');
+if (isDirectRun) {
+  main()
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'HOD setup failed.';
+      console.error(message);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await client.end();
+    });
+}

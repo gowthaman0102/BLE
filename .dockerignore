@@ -1,0 +1,16 @@
+node_modules/
+.git/
+.env
+.env.*
+.env.local
+.expo/
+dist/
+build/
+.vite/
+*.log
+.DS_Store
+Thumbs.db
+scratch/
+coverage/
+apps/professor/
+apps/student/
