@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   SafeAreaView,
+  StatusBar,
 } from 'react-native';
 import { useAuth } from '../../store/AuthContext';
 import Colors from '../../constants/Colors';
@@ -15,6 +16,8 @@ import { router } from 'expo-router';
 import { TimetableEntry, AttendanceSession } from '@smart-attendance/shared';
 import { timetableService } from '../../services/api/timetableService';
 import { attendanceService } from '../../services/api/attendanceService';
+import { Card, SectionHeader, StatusBadge, MetricCard, EmptyState, ErrorState, PrimaryButton } from '../../components/ui';
+import { Ionicons } from '@expo/vector-icons';
 
 function getTodayWeekdayInKolkata(): string {
   return new Date().toLocaleDateString('en-US', {
@@ -23,10 +26,29 @@ function getTodayWeekdayInKolkata(): string {
   }).toUpperCase();
 }
 
+function getFormattedDate(): string {
+  return new Date().toLocaleDateString('en-US', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 function getTodayDateString(): string {
   return new Date().toLocaleDateString('en-CA', {
     timeZone: 'Asia/Kolkata',
   });
+}
+
+function getInitials(name?: string): string {
+  if (!name) return 'F';
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0].toUpperCase())
+    .join('');
 }
 
 export default function HomeScreen() {
@@ -40,6 +62,7 @@ export default function HomeScreen() {
   const [activeSessions, setActiveSessions] = useState<AttendanceSession[]>([]);
 
   const todayDay = useMemo(() => getTodayWeekdayInKolkata(), []);
+  const formattedDate = useMemo(() => getFormattedDate(), []);
 
   const loadDashboardData = useCallback(async () => {
     try {
@@ -47,8 +70,8 @@ export default function HomeScreen() {
       const todayDate = getTodayDateString();
 
       const [allEntries, sessions] = await Promise.all([
-        timetableService.getMyTimetable(),
-        attendanceService.getSessions({ date: todayDate }),
+        timetableService.getMyTimetable().catch(() => []),
+        attendanceService.getSessions({ date: todayDate }).catch(() => []),
       ]);
 
       setAllTimetable(allEntries);
@@ -67,8 +90,7 @@ export default function HomeScreen() {
       setTodaySchedule(filteredToday);
       setActiveSessions(sessions.filter((s) => s.status === 'ACTIVE'));
     } catch (err: any) {
-      console.error('Failed to load professor dashboard data:', err);
-      setError(err?.message || 'Unable to load dashboard data. Please try again.');
+      setError(err?.message || 'Unable to load dashboard data. Please pull to refresh.');
     } finally {
       setLoading(false);
     }
@@ -84,14 +106,17 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [loadDashboardData]);
 
-  // Unique assigned classes
   const assignedClassesCount = useMemo(() => {
     const classIds = new Set(allTimetable.map((t) => t.classId).filter(Boolean));
     return classIds.size;
   }, [allTimetable]);
 
+  const primaryRole = user?.roles?.[0] || 'FACULTY';
+  const roleDisplay = primaryRole === 'DEPUTY_HOD' ? 'Deputy HOD' : primaryRole === 'CLASS_COUNSELOR' ? 'Class Counselor' : primaryRole === 'ADMIN' ? 'Administrator' : 'Faculty Member';
+
   return (
     <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.card} />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
@@ -99,127 +124,155 @@ export default function HomeScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={Colors.primary}
-            colors={[Colors.primary]}
+            tintColor={Colors.teal}
+            colors={[Colors.teal]}
           />
         }
       >
-        {/* Professor Identity Card */}
-        <View style={styles.card}>
-          <Text style={styles.name}>{user?.name || 'Professor'}</Text>
-          <Text style={styles.detail}>
-            {user?.staffCode ? `${user.staffCode} • ` : ''}
-            {user?.collegeEmail || ''}
-          </Text>
-
-          <View style={styles.roleContainer}>
-            {(user?.roles || ['STAFF']).map((r) => (
-              <View key={r} style={styles.roleBadge}>
-                <Text style={styles.roleBadgeText}>{r}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Quick Metrics */}
-          <View style={styles.metricsRow}>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricNumber}>{assignedClassesCount}</Text>
-              <Text style={styles.metricLabel}>Assigned Classes</Text>
-            </View>
-            <View style={styles.metricDivider} />
-            <View style={styles.metricItem}>
-              <Text style={styles.metricNumber}>{todaySchedule.length}</Text>
-              <Text style={styles.metricLabel}>Classes Today</Text>
-            </View>
-            <View style={styles.metricDivider} />
-            <View style={styles.metricItem}>
-              <Text style={[styles.metricNumber, activeSessions.length > 0 && styles.activeNumber]}>
-                {activeSessions.length}
+        {/* Professor Profile Greeting Card */}
+        <Card style={styles.headerCard}>
+          <View style={styles.headerRow}>
+            <View style={styles.headerLeft}>
+              <Text style={styles.greetingText}>Faculty Session Active</Text>
+              <Text style={styles.professorName} numberOfLines={1}>
+                {user?.name || 'Faculty Member'}
               </Text>
-              <Text style={styles.metricLabel}>Active Sessions</Text>
+              <View style={styles.roleMetaRow}>
+                <View style={styles.roleBadge}>
+                  <Text style={styles.roleBadgeText}>{roleDisplay}</Text>
+                </View>
+                <View style={styles.metaChip}>
+                  <Text style={styles.metaChipText}>{user?.collegeEmail || ''}</Text>
+                </View>
+              </View>
+            </View>
+            <View style={styles.avatarWrap}>
+              <Text style={styles.avatarText}>{getInitials(user?.name)}</Text>
             </View>
           </View>
-        </View>
-
-        {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={loadDashboardData}>
-              <Text style={styles.retryText}>Retry</Text>
-            </TouchableOpacity>
+          <View style={styles.headerFooter}>
+            <View style={styles.dateWrap}>
+              <Ionicons name="calendar-outline" size={14} color={Colors.textSecondary} />
+              <Text style={styles.dateText}>{formattedDate} • {todayDay}</Text>
+            </View>
+            <StatusBadge
+              status={activeSessions.length > 0 ? `${activeSessions.length} Active Session` : 'No Live Session'}
+              type={activeSessions.length > 0 ? 'success' : 'neutral'}
+            />
           </View>
-        ) : null}
+        </Card>
 
-        {/* Live Active Attendance Banner (if active session running) */}
+        {/* Active Session Action Banner */}
         {activeSessions.length > 0 ? (
-          <View style={styles.activeBannerCard}>
-            <View style={styles.activeHeaderRow}>
-              <View style={styles.activeDot} />
-              <Text style={styles.activeBannerTitle}>ATTENDANCE SESSION IN PROGRESS</Text>
+          <TouchableOpacity
+            style={styles.activeSessionBanner}
+            onPress={() => router.push('/(tabs)/attendance')}
+            activeOpacity={0.85}
+          >
+            <View style={styles.activeBannerIconWrap}>
+              <Ionicons name="radio" size={20} color={Colors.tealDark} />
             </View>
-            <Text style={styles.activeBannerSubtitle}>
-              {activeSessions[0].subjectName || 'Class Session'} • {activeSessions[0].className || ''}
-            </Text>
-            <TouchableOpacity
-              style={styles.resumeButton}
-              onPress={() => router.push('/(tabs)/attendance')}
-            >
-              <Text style={styles.resumeButtonText}>Open Live Attendance Scanner</Text>
-            </TouchableOpacity>
-          </View>
+            <View style={styles.activeBannerContent}>
+              <Text style={styles.activeBannerTitle}>Active Attendance In Progress</Text>
+              <Text style={styles.activeBannerSubtitle}>
+                {activeSessions[0].subjectName} • {activeSessions[0].className || 'Classroom'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={Colors.tealDark} />
+          </TouchableOpacity>
         ) : null}
 
-        {/* Today's Timetable Section */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Today's Schedule</Text>
-          <Text style={styles.dayBadge}>{todayDay}</Text>
+        {error ? <ErrorState message={error} onRetry={() => { setLoading(true); loadDashboardData(); }} /> : null}
+
+        {/* Operational Overview Metrics */}
+        <SectionHeader title="Operational Metrics" badge="Semester Scope" />
+        <View style={styles.metricRow}>
+          <MetricCard
+            label="Assigned Classes"
+            value={assignedClassesCount}
+            subtitle="Academic Sections"
+            icon="school-outline"
+            color={Colors.teal}
+          />
+          <MetricCard
+            label="Today's Classes"
+            value={todaySchedule.length}
+            subtitle={`${todayDay.slice(0, 3)} Teaching Schedule`}
+            icon="calendar-outline"
+            color={Colors.indigo}
+          />
         </View>
 
-        {loading ? (
-          <View style={styles.centerSection}>
-            <ActivityIndicator size="small" color={Colors.primary} />
-            <Text style={styles.loadingText}>Loading schedule...</Text>
-          </View>
-        ) : todaySchedule.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No classes scheduled for today.</Text>
-            <Text style={styles.emptySubtitle}>
-              Enjoy your day! Tap Timetable to view your complete weekly teaching schedule.
-            </Text>
-          </View>
-        ) : (
-          todaySchedule.map((entry) => (
-            <View key={entry.id} style={styles.classCard}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.periodName}>{entry.periodName || 'Period'}</Text>
-                <Text style={styles.time}>
-                  {entry.periodStartTime && entry.periodEndTime
-                    ? `${entry.periodStartTime} – ${entry.periodEndTime}`
-                    : entry.periodStartTime || ''}
-                </Text>
-              </View>
+        {/* Today's Teaching Schedule */}
+        <SectionHeader
+          title="Today's Teaching Schedule"
+          badge={todayDay}
+          actionText="Open Timetable"
+          onAction={() => router.push('/(tabs)/timetable')}
+        />
 
-              <Text style={styles.subject}>{entry.subjectName}</Text>
-              <View style={styles.metaRow}>
-                <Text style={styles.classDetail}>{entry.className || 'Assigned Class'}</Text>
-                {entry.subjectCode ? (
-                  <View style={styles.codeBadge}>
-                    <Text style={styles.codeText}>{entry.subjectCode}</Text>
-                  </View>
-                ) : null}
-              </View>
-
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => {
-                  router.push('/(tabs)/attendance');
-                }}
-              >
-                <Text style={styles.actionButtonText}>Start / Manage Attendance</Text>
-              </TouchableOpacity>
+        <Card style={styles.scheduleCard}>
+          {loading ? (
+            <View style={styles.centerSmall}>
+              <ActivityIndicator size="small" color={Colors.teal} />
+              <Text style={styles.loadingText}>Loading today's classes...</Text>
             </View>
-          ))
-        )}
+          ) : todaySchedule.length === 0 ? (
+            <EmptyState
+              icon="calendar-outline"
+              title="No Classes Today"
+              description={`You have no assigned teaching periods scheduled on ${todayDay.toLowerCase()}.`}
+            />
+          ) : (
+            todaySchedule.map((entry, index) => {
+              const isLast = index === todaySchedule.length - 1;
+              return (
+                <View key={entry.id || index} style={[styles.periodItem, !isLast && styles.periodDivider]}>
+                  <View style={styles.periodTimeCol}>
+                    <Text style={styles.periodTimeText}>
+                      {entry.periodStartTime || `P${entry.periodNumber || index + 1}`}
+                    </Text>
+                    {entry.periodEndTime ? (
+                      <Text style={styles.periodEndTimeText}>{entry.periodEndTime}</Text>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.periodDetailsCol}>
+                    <View style={styles.periodHeaderRow}>
+                      <Text style={styles.subjectNameText} numberOfLines={1}>
+                        {entry.subjectName || 'Teaching Period'}
+                      </Text>
+                      {entry.subjectCode ? (
+                        <View style={styles.codeTag}>
+                          <Text style={styles.codeTagText}>{entry.subjectCode}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    <View style={styles.periodMetaRow}>
+                      <View style={styles.metaWithIcon}>
+                        <Ionicons name="people-outline" size={13} color={Colors.textSecondary} style={{ marginRight: 4 }} />
+                        <Text style={styles.metaClassText}>{entry.className || 'Assigned Class'}</Text>
+                      </View>
+                      <View style={styles.metaWithIcon}>
+                        <Ionicons name="location-outline" size={13} color={Colors.textMuted} style={{ marginRight: 3 }} />
+                        <Text style={styles.metaRoomText}>Assigned Hall</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.sessionActionBtn}
+                    onPress={() => router.push('/(tabs)/attendance')}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="radio-outline" size={18} color={Colors.teal} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })
+          )}
+        </Card>
       </ScrollView>
     </SafeAreaView>
   );
@@ -237,259 +290,221 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
-  card: {
-    backgroundColor: Colors.surface,
+  headerCard: {
     padding: 20,
-    borderRadius: 12,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    marginBottom: 16,
   },
-  name: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 4,
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
-  detail: {
-    fontSize: 14,
-    color: Colors.textSecondary,
+  headerLeft: {
+    flex: 1,
+    marginRight: 12,
+  },
+  greetingText: {
+    fontSize: 12,
+    color: Colors.teal,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  professorName: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.primary,
+    letterSpacing: -0.3,
     marginBottom: 8,
   },
-  roleContainer: {
+  roleMetaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginBottom: 16,
   },
   roleBadge: {
-    backgroundColor: Colors.primary + '22',
-    borderWidth: 1,
-    borderColor: Colors.primary + '55',
+    backgroundColor: Colors.tealLight,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 4,
+    borderRadius: 8,
   },
   roleBadgeText: {
-    color: Colors.primary,
     fontSize: 11,
-    fontWeight: 'bold',
+    fontWeight: '700',
+    color: Colors.tealDark,
   },
-  metricsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    paddingTop: 14,
-  },
-  metricItem: {
-    alignItems: 'center',
-  },
-  metricNumber: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  activeNumber: {
-    color: Colors.primary,
-  },
-  metricLabel: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    marginTop: 2,
-    textTransform: 'uppercase',
-  },
-  metricDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: Colors.border,
-  },
-  activeBannerCard: {
-    backgroundColor: Colors.primary + '18',
+  metaChip: {
+    backgroundColor: Colors.surfaceSubtle,
     borderWidth: 1,
-    borderColor: Colors.primary,
-    padding: 16,
-    borderRadius: 10,
-    marginBottom: 20,
-  },
-  activeHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  activeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Colors.primary,
-    marginRight: 8,
-  },
-  activeBannerTitle: {
-    color: Colors.primary,
-    fontWeight: 'bold',
-    fontSize: 13,
-    letterSpacing: 0.5,
-  },
-  activeBannerSubtitle: {
-    fontSize: 16,
-    color: Colors.text,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  resumeButton: {
-    backgroundColor: Colors.primary,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  resumeButtonText: {
-    color: Colors.background,
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  dayBadge: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: Colors.primary,
-    backgroundColor: Colors.surface,
+    borderColor: Colors.border,
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
-  centerSection: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: Colors.textSecondary,
-    marginTop: 10,
-    fontSize: 14,
-  },
-  emptyCard: {
-    backgroundColor: Colors.surface,
-    padding: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 6,
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  classCard: {
-    backgroundColor: Colors.surface,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  periodName: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
-  time: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  subject: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 6,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  classDetail: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  codeBadge: {
-    backgroundColor: Colors.border,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  codeText: {
-    color: Colors.textSecondary,
+  metaChipText: {
     fontSize: 11,
     fontWeight: '600',
+    color: Colors.textSecondary,
   },
-  actionButton: {
-    backgroundColor: Colors.surface,
-    paddingVertical: 10,
-    borderRadius: 6,
+  avatarWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: Colors.tealLight,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: Colors.teal + '30',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  actionButtonText: {
-    color: Colors.primary,
-    fontWeight: 'bold',
-    fontSize: 14,
+  avatarText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.tealDark,
   },
-  errorBox: {
-    backgroundColor: Colors.error + '18',
+  headerFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderLight,
+  },
+  dateWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dateText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  activeSessionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.tealLight,
     borderWidth: 1,
-    borderColor: Colors.error,
-    borderRadius: 8,
+    borderColor: Colors.teal + '40',
+    borderRadius: 14,
     padding: 14,
     marginBottom: 16,
+  },
+  activeBannerIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: Colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  activeBannerContent: {
+    flex: 1,
+  },
+  activeBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.tealDark,
+    marginBottom: 2,
+  },
+  activeBannerSubtitle: {
+    fontSize: 12,
+    color: Colors.tealDark,
+    opacity: 0.85,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  scheduleCard: {
+    padding: 0,
+    overflow: 'hidden',
+  },
+  centerSmall: {
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  periodItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  periodDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  periodTimeCol: {
+    width: 72,
+    marginRight: 14,
+  },
+  periodTimeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  periodEndTimeText: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  periodDetailsCol: {
+    flex: 1,
+  },
+  periodHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  subjectNameText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.primary,
+    flex: 1,
+    marginRight: 8,
+  },
+  codeTag: {
+    backgroundColor: Colors.indigoLight,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  codeTagText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.indigo,
+  },
+  periodMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  metaWithIcon: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  errorText: {
-    color: Colors.error,
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 10,
+  metaClassText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '500',
   },
-  retryButton: {
-    backgroundColor: Colors.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: Colors.border,
+  metaRoomText: {
+    fontSize: 11,
+    color: Colors.textMuted,
   },
-  retryText: {
-    color: Colors.text,
-    fontSize: 13,
-    fontWeight: 'bold',
+  sessionActionBtn: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: Colors.tealLight,
+    marginLeft: 8,
   },
 });

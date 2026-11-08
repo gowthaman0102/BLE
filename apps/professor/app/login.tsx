@@ -2,15 +2,18 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StatusBar,
 } from 'react-native';
 import { useAuth } from '../store/AuthContext';
 import { router } from 'expo-router';
 import Colors from '../constants/Colors';
+import { InputField, PrimaryButton, ErrorState } from '../components/ui';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -26,97 +29,105 @@ export default function LoginScreen() {
   }, [authState]);
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      setError('Please enter your college email and password.');
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      setError('Please enter your college email address and password.');
       return;
     }
 
     setLoading(true);
     setError(null);
     try {
-      await login(email, password);
+      await login(trimmedEmail, password);
       router.replace('/(tabs)');
     } catch (e: any) {
-      setError(e?.message || 'Login failed. Please check your credentials.');
+      setError(e?.message || 'Login failed. Please verify your credentials or network connection.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleQuickFill = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setError(null);
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Smart Attendance</Text>
-          <Text style={styles.subtitle}>Professor Portal</Text>
-        </View>
-
-        {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Institutional Branding Header */}
+          <View style={styles.brandContainer}>
+            <View style={styles.logoBadge}>
+              <Ionicons name="briefcase" size={32} color={Colors.teal} />
+            </View>
+            <Text style={styles.appTitle}>Smart Attendance</Text>
+            <View style={styles.portalBadge}>
+              <Text style={styles.portalBadgeText}>FACULTY & PROFESSOR PORTAL</Text>
+            </View>
+            <Text style={styles.tagline}>
+              Classroom Attendance Management & BLE Scanning System
+            </Text>
           </View>
-        ) : null}
 
-        <View style={styles.form}>
-          <Text style={styles.inputLabel}>College Email</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. hod.it@sonatech.ac.in"
-            placeholderTextColor={Colors.textSecondary}
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
+          {/* Login Form Card */}
+          <View style={styles.formCard}>
+            <Text style={styles.formTitle}>Faculty Sign In</Text>
+            <Text style={styles.formSubtitle}>
+              Sign in with your authorized college staff credentials
+            </Text>
 
-          <Text style={styles.inputLabel}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter password"
-            placeholderTextColor={Colors.textSecondary}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
+            {error ? <ErrorState message={error} style={{ marginBottom: 16 }} /> : null}
 
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color={Colors.background} size="small" />
-            ) : (
-              <Text style={styles.buttonText}>Sign In</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+            <InputField
+              label="College Email"
+              placeholder="e.g. hod.it@sonatech.ac.in"
+              value={email}
+              onChangeText={(text) => {
+                setEmail(text);
+                if (error) setError(null);
+              }}
+              icon="mail-outline"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              editable={!loading}
+            />
 
-        {/* Quick Demo Helpers for development testing */}
-        <View style={styles.quickHelperContainer}>
-          <Text style={styles.quickHelperTitle}>Quick Demo Sign-In</Text>
-          <View style={styles.quickHelperRow}>
-            <TouchableOpacity
-              style={styles.quickHelperChip}
-              onPress={() => handleQuickFill('hod.it@sonatech.ac.in', '123456789012')}
-            >
-              <Text style={styles.quickHelperChipText}>👑 Dr. Akilandeswari (HOD)</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.quickHelperChip}
-              onPress={() => handleQuickFill('admin@sonatech.ac.in', '123456789012')}
-            >
-              <Text style={styles.quickHelperChipText}>⚡ System Admin</Text>
-            </TouchableOpacity>
+            <InputField
+              label="Password"
+              placeholder="Enter your account password"
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (error) setError(null);
+              }}
+              icon="lock-closed-outline"
+              secureTextEntry
+              editable={!loading}
+            />
+
+            <PrimaryButton
+              title="Sign In to Faculty Portal"
+              onPress={handleLogin}
+              loading={loading}
+              disabled={loading || !email.trim() || !password}
+              icon="arrow-forward"
+              style={{ marginTop: 8 }}
+            />
           </View>
-        </View>
-      </View>
+
+          {/* Security & Institutional Footer */}
+          <View style={styles.footer}>
+            <View style={styles.securityRow}>
+              <Ionicons name="shield-checkmark-outline" size={16} color={Colors.teal} style={{ marginRight: 6 }} />
+              <Text style={styles.footerText}>Role-Based Academic Security (RBAC)</Text>
+            </View>
+            <Text style={styles.versionText}>Smart Attendance v1.0.0 • Faculty Edition</Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -126,113 +137,104 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  container: {
+  keyboardView: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
     maxWidth: 480,
     width: '100%',
     alignSelf: 'center',
   },
-  header: {
+  brandContainer: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 28,
   },
-  title: {
-    fontSize: 30,
-    fontWeight: 'bold',
-    color: Colors.text,
-    textAlign: 'center',
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontSize: 18,
-    color: Colors.primary,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  errorBox: {
-    backgroundColor: Colors.error + '22',
-    borderWidth: 1,
-    borderColor: Colors.error,
-    borderRadius: 8,
-    padding: 12,
+  logoBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: Colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 16,
-  },
-  errorText: {
-    color: Colors.error,
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  form: {
-    backgroundColor: Colors.surface,
-    padding: 24,
-    borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  appTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: Colors.primary,
+    letterSpacing: -0.5,
+    marginBottom: 8,
+  },
+  portalBadge: {
+    backgroundColor: Colors.tealLight,
+    paddingHorizontal: 12,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  portalBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.tealDark,
+    letterSpacing: 0.8,
+  },
+  tagline: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    maxWidth: 300,
+    lineHeight: 18,
+  },
+  formCard: {
+    backgroundColor: Colors.card,
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 2,
     marginBottom: 24,
   },
-  inputLabel: {
+  formTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.primary,
+    marginBottom: 4,
+  },
+  formSubtitle: {
     fontSize: 13,
     color: Colors.textSecondary,
-    marginBottom: 6,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    marginBottom: 20,
+    lineHeight: 18,
   },
-  input: {
-    backgroundColor: Colors.background,
-    color: Colors.text,
-    padding: 14,
-    borderRadius: 8,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    fontSize: 15,
-  },
-  button: {
-    backgroundColor: Colors.primary,
-    paddingVertical: 14,
-    borderRadius: 8,
+  footer: {
     alignItems: 'center',
-    marginTop: 8,
+    gap: 6,
   },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  buttonText: {
-    color: Colors.background,
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  quickHelperContainer: {
-    alignItems: 'center',
-    paddingTop: 8,
-  },
-  quickHelperTitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: Colors.textSecondary,
-    marginBottom: 10,
-    letterSpacing: 0.5,
-  },
-  quickHelperRow: {
+  securityRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'center',
+    alignItems: 'center',
   },
-  quickHelperChip: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+  footerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.teal,
   },
-  quickHelperChipText: {
-    color: Colors.text,
-    fontSize: 13,
-    fontWeight: '500',
+  versionText: {
+    fontSize: 11,
+    color: Colors.textMuted,
   },
 });

@@ -19,25 +19,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthPrincipal | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     async function restoreSession() {
       try {
-        const token = await authStorage.getToken();
-        const savedUser = await authStorage.getUser();
+        const [token, savedUser] = await Promise.all([
+          authStorage.getToken(),
+          authStorage.getUser(),
+        ]);
+
+        if (!isMounted) return;
 
         if (token && savedUser) {
           setAuthToken(token);
           setUser(savedUser);
           setAuthState('AUTHENTICATED');
+
+          // Validate token with backend /api/auth/me to check revocation or expiration
+          try {
+            const meResp = await apiClient.get<{ success: boolean; user?: AuthPrincipal }>('/api/auth/me');
+            if (meResp.success && meResp.user) {
+              if (isMounted) {
+                setUser(meResp.user);
+                await authStorage.setUser(meResp.user);
+              }
+            } else if (isMounted) {
+              await authStorage.clear();
+              setAuthToken(null);
+              setUser(null);
+              setAuthState('UNAUTHENTICATED');
+            }
+          } catch (validateErr: any) {
+            if (validateErr?.statusCode === 401 || validateErr?.statusCode === 403) {
+              if (isMounted) {
+                await authStorage.clear();
+                setAuthToken(null);
+                setUser(null);
+                setAuthState('UNAUTHENTICATED');
+              }
+            }
+            // If offline/network failure, keep cached session for offline viewing
+          }
         } else {
           setAuthState('UNAUTHENTICATED');
         }
       } catch (err) {
-        console.warn('Error restoring professor session:', err);
-        setAuthState('UNAUTHENTICATED');
+        if (isMounted) {
+          setAuthState('UNAUTHENTICATED');
+        }
       }
     }
 
     restoreSession();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -55,8 +92,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (response.success && response.user && response.token) {
         setAuthToken(response.token);
         setUser(response.user);
-        await authStorage.setToken(response.token);
-        await authStorage.setUser(response.user);
+        await Promise.all([
+          authStorage.setToken(response.token),
+          authStorage.setUser(response.user),
+        ]);
         setAuthState('AUTHENTICATED');
       } else {
         throw new Error('Authentication succeeded but failed to receive session token.');

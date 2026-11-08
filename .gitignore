@@ -15,3 +15,6 @@ __pycache__/
 .idea/
 .vscode/
 data/
+*.apk
+*.aab
+

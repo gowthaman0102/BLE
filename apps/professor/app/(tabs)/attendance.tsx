@@ -45,23 +45,23 @@ function formatDetectionTime(isoStr?: string): string {
 
 function getFaceBadgeInfo(status?: string, isPresent?: boolean, source?: string) {
   if (source === 'MANUAL') {
-    return { label: 'Manual Correction', bg: '#00E6761A', text: '#00E676' };
+    return { label: 'Manual Correction', bg: Colors.successBackground, text: Colors.success, border: Colors.successBorder };
   }
   switch (status) {
     case 'VERIFIED':
-      return { label: 'Face Verified', bg: '#00E6761A', text: '#00E676' };
+      return { label: 'Face Verified', bg: Colors.successBackground, text: Colors.success, border: Colors.successBorder };
     case 'FALLBACK_PENDING':
-      return { label: 'Fallback Requested', bg: '#FF91001A', text: '#FF9100' };
+      return { label: 'Fallback Requested', bg: Colors.warningBackground, text: Colors.warning, border: Colors.warningBorder };
     case 'FAILED':
-      return { label: 'Face Failed', bg: '#FF52521A', text: '#FF5252' };
+      return { label: 'Face Failed', bg: Colors.errorBackground, text: Colors.error, border: Colors.errorBorder };
     case 'PENDING':
-      return { label: 'Face Pending', bg: '#FFD7401A', text: '#FFD740' };
+      return { label: 'Face Pending', bg: Colors.warningBackground, text: Colors.warning, border: Colors.warningBorder };
     case 'BLE_DETECTED':
-      return { label: 'BLE Detected', bg: '#00E5FF1A', text: '#00E5FF' };
+      return { label: 'BLE Detected', bg: Colors.tealLight, text: Colors.tealDark, border: Colors.teal + '40' };
     default:
       return isPresent
-        ? { label: 'BLE Detected', bg: '#00E5FF1A', text: '#00E5FF' }
-        : { label: 'Awaiting Beacon', bg: '#21262D', text: '#8B949E' };
+        ? { label: 'BLE Detected', bg: Colors.tealLight, text: Colors.tealDark, border: Colors.teal + '40' }
+        : { label: 'Awaiting Beacon', bg: Colors.surfaceSubtle, text: Colors.textMuted, border: Colors.border };
   }
 }
 
@@ -364,7 +364,7 @@ export default function AttendanceScreen() {
 
               <Text style={styles.subjectTitle}>{activeSession.subjectName || 'Class Session'}</Text>
               <Text style={styles.classSubtitle}>
-                {activeSession.className || 'Assigned Class'} • Room {activeSession.roomName || 'A-204'}
+                {activeSession.className || 'Assigned Class'} • {activeSession.roomName ? `Room ${activeSession.roomName}` : 'Room not assigned'}
               </Text>
               <Text style={styles.timeDetail}>
                 {activeSession.periodStartTime && activeSession.periodEndTime
@@ -838,12 +838,17 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   activeCard: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.card,
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: Colors.primary + '88',
+    borderColor: Colors.border,
     marginBottom: 16,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
   activeHeader: {
     flexDirection: 'row',
@@ -854,9 +859,9 @@ const styles = StyleSheet.create({
   liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.primary + '22',
+    backgroundColor: Colors.tealLight,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: Colors.teal + '40',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
@@ -865,11 +870,11 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.teal,
     marginRight: 6,
   },
   liveBadgeText: {
-    color: Colors.primary,
+    color: Colors.tealDark,
     fontWeight: 'bold',
     fontSize: 11,
     letterSpacing: 0.5,
@@ -881,7 +886,7 @@ const styles = StyleSheet.create({
   subjectTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: Colors.text,
+    color: Colors.primary,
     marginBottom: 4,
   },
   classSubtitle: {
@@ -891,25 +896,25 @@ const styles = StyleSheet.create({
   },
   timeDetail: {
     fontSize: 14,
-    color: Colors.primary,
+    color: Colors.teal,
     fontWeight: '600',
     marginBottom: 12,
   },
   scannerNotice: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.tealSubtle,
     padding: 10,
-    borderRadius: 6,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.teal + '30',
     marginBottom: 16,
   },
   scannerDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.teal,
     marginRight: 8,
   },
   scannerNoticeText: {
@@ -976,13 +981,13 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   greenNumber: {
-    color: Colors.primary,
+    color: Colors.success,
   },
   yellowNumber: {
     color: Colors.warning,
   },
   cyanNumber: {
-    color: '#00E5FF',
+    color: Colors.teal,
   },
   statLabel: {
     fontSize: 11,
@@ -996,13 +1001,13 @@ const styles = StyleSheet.create({
   },
   progressBarBackground: {
     height: 8,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.surfaceSubtle,
     borderRadius: 4,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.teal,
   },
   rosterHeaderRow: {
     flexDirection: 'row',
@@ -1013,10 +1018,10 @@ const styles = StyleSheet.create({
   countBadge: {
     fontSize: 12,
     color: Colors.textSecondary,
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.card,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 4,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -1024,10 +1029,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   searchInput: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.card,
     color: Colors.text,
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: Colors.border,
     fontSize: 14,
@@ -1038,7 +1043,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   filterPill: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.card,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
@@ -1046,8 +1051,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   filterPillActive: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '22',
+    borderColor: Colors.teal,
+    backgroundColor: Colors.tealLight,
   },
   filterPillText: {
     fontSize: 12,
@@ -1055,16 +1060,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   filterPillTextActive: {
-    color: Colors.primary,
+    color: Colors.tealDark,
     fontWeight: 'bold',
   },
   studentCard: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.card,
     padding: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
     marginBottom: 10,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
   },
   studentInfoRow: {
     flexDirection: 'row',
@@ -1078,7 +1088,7 @@ const styles = StyleSheet.create({
   studentName: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: Colors.text,
+    color: Colors.primary,
   },
   studentReg: {
     fontSize: 13,

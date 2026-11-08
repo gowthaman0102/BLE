@@ -8,10 +8,13 @@ import {
   ActivityIndicator,
   RefreshControl,
   SafeAreaView,
+  StatusBar,
 } from 'react-native';
 import Colors from '../../constants/Colors';
 import { TimetableEntry } from '@smart-attendance/shared';
 import { timetableService } from '../../services/api/timetableService';
+import { Card, SectionHeader, EmptyState, ErrorState } from '../../components/ui';
+import { Ionicons } from '@expo/vector-icons';
 
 const DAYS_OF_WEEK = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'] as const;
 
@@ -34,7 +37,6 @@ export default function TimetableScreen() {
       const data = await timetableService.getMyTimetable();
       setEntries(data);
     } catch (err: any) {
-      console.error('Failed to load professor timetable:', err);
       setError(err?.message || 'Unable to load timetable.');
     } finally {
       setLoading(false);
@@ -73,27 +75,133 @@ export default function TimetableScreen() {
     return [selectedDay];
   }, [selectedDay, groupedByDay]);
 
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <Card style={styles.centerSection}>
+          <ActivityIndicator size="small" color={Colors.teal} />
+          <Text style={styles.loadingText}>Loading teaching timetable...</Text>
+        </Card>
+      );
+    }
+
+    if (error) {
+      return (
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            setLoading(true);
+            fetchTimetable();
+          }}
+        />
+      );
+    }
+
+    if (entries.length === 0) {
+      return (
+        <Card>
+          <EmptyState
+            icon="calendar-outline"
+            title="No Timetable Allocated"
+            description="No assigned teaching timetable found for your faculty account."
+          />
+        </Card>
+      );
+    }
+
+    if (selectedDay !== 'ALL' && (groupedByDay[selectedDay]?.length || 0) === 0) {
+      return (
+        <Card>
+          <EmptyState
+            icon="cafe-outline"
+            title="No Classes Scheduled"
+            description={`No teaching periods scheduled on ${selectedDay.toLowerCase()}.`}
+          />
+        </Card>
+      );
+    }
+
+    return daysToShow.map((day) => {
+      const dayEntries = groupedByDay[day] || [];
+      if (dayEntries.length === 0) return null;
+
+      return (
+        <View key={day} style={styles.dayGroup}>
+          <SectionHeader title={day} badge={`${dayEntries.length} Teaching Periods`} />
+          {dayEntries.map((entry, index) => {
+            return (
+              <Card key={entry.id || index} style={styles.periodCard}>
+                <View style={styles.periodHeader}>
+                  <View style={styles.periodBadge}>
+                    <Text style={styles.periodBadgeText}>
+                      {entry.periodName || `P${entry.periodNumber || index + 1}`}
+                    </Text>
+                  </View>
+                  <View style={styles.timeWrap}>
+                    <Ionicons name="time-outline" size={13} color={Colors.textSecondary} style={{ marginRight: 4 }} />
+                    <Text style={styles.timeText}>
+                      {entry.periodStartTime && entry.periodEndTime
+                        ? `${entry.periodStartTime} – ${entry.periodEndTime}`
+                        : entry.periodStartTime || 'Scheduled'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.subjectRow}>
+                  <Text style={styles.subjectText}>{entry.subjectName || 'Teaching Subject'}</Text>
+                  {entry.subjectCode ? (
+                    <View style={styles.codeTag}>
+                      <Text style={styles.codeTagText}>{entry.subjectCode}</Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                <View style={styles.footerRow}>
+                  <View style={styles.classMeta}>
+                    <Ionicons name="people-outline" size={13} color={Colors.textSecondary} style={{ marginRight: 4 }} />
+                    <Text style={styles.classText} numberOfLines={1}>
+                      Class: {entry.className || 'Assigned Section'}
+                    </Text>
+                  </View>
+                  <View style={styles.roomMeta}>
+                    <Ionicons name="location-outline" size={13} color={Colors.textMuted} style={{ marginRight: 3 }} />
+                    <Text style={styles.roomText}>
+                      {entry.className ? 'Class Hall' : 'Hall not assigned'}
+                    </Text>
+                  </View>
+                </View>
+              </Card>
+            );
+          })}
+        </View>
+      );
+    });
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.card} />
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.scrollContainer}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={Colors.primary}
-            colors={[Colors.primary]}
+            tintColor={Colors.teal}
+            colors={[Colors.teal]}
           />
         }
       >
-        <Text style={styles.screenTitle}>Teaching Timetable</Text>
-
         {/* Day Selector Pills */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillsScroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.pillsScroll}
+        >
           <TouchableOpacity
             style={[styles.pill, selectedDay === 'ALL' && styles.pillActive]}
             onPress={() => setSelectedDay('ALL')}
+            activeOpacity={0.8}
           >
             <Text style={[styles.pillText, selectedDay === 'ALL' && styles.pillTextActive]}>
               All Days
@@ -101,89 +209,24 @@ export default function TimetableScreen() {
           </TouchableOpacity>
 
           {DAYS_OF_WEEK.map((day) => {
-            const count = groupedByDay[day]?.length || 0;
             const isSelected = selectedDay === day;
+            const shortDay = day.slice(0, 3);
             return (
               <TouchableOpacity
                 key={day}
                 style={[styles.pill, isSelected && styles.pillActive]}
                 onPress={() => setSelectedDay(day)}
+                activeOpacity={0.8}
               >
                 <Text style={[styles.pillText, isSelected && styles.pillTextActive]}>
-                  {day.slice(0, 3)} {count > 0 ? `(${count})` : ''}
+                  {shortDay}
                 </Text>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
 
-        {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={fetchTimetable}>
-              <Text style={styles.retryText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
-        {loading ? (
-          <View style={styles.centerSection}>
-            <ActivityIndicator size="small" color={Colors.primary} />
-            <Text style={styles.loadingText}>Loading timetable...</Text>
-          </View>
-        ) : entries.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No teaching periods assigned</Text>
-            <Text style={styles.emptySubtitle}>
-              Contact your academic coordinator or HOD to configure your timetable assignments.
-            </Text>
-          </View>
-        ) : (
-          daysToShow.map((day) => {
-            const dayEntries = groupedByDay[day] || [];
-            return (
-              <View key={day} style={styles.daySection}>
-                <View style={styles.dayHeaderRow}>
-                  <Text style={styles.dayTitle}>{day}</Text>
-                  <Text style={styles.dayCount}>{dayEntries.length} periods</Text>
-                </View>
-
-                {dayEntries.length === 0 ? (
-                  <View style={styles.emptyDayCard}>
-                    <Text style={styles.emptyDayText}>No classes scheduled for {day}</Text>
-                  </View>
-                ) : (
-                  dayEntries.map((entry) => (
-                    <View key={entry.id} style={styles.card}>
-                      <View style={styles.cardHeader}>
-                        <Text style={styles.periodBadge}>{entry.periodName || 'Period'}</Text>
-                        <Text style={styles.time}>
-                          {entry.periodStartTime && entry.periodEndTime
-                            ? `${entry.periodStartTime} – ${entry.periodEndTime}`
-                            : entry.periodStartTime || ''}
-                        </Text>
-                      </View>
-
-                      <View style={styles.subjectRow}>
-                        <Text style={styles.subject}>{entry.subjectName}</Text>
-                        {entry.subjectCode ? (
-                          <View style={styles.codeBadge}>
-                            <Text style={styles.codeText}>{entry.subjectCode}</Text>
-                          </View>
-                        ) : null}
-                      </View>
-
-                      <View style={styles.metaRow}>
-                        <Text style={styles.classDetail}>Class: {entry.className || 'Assigned Class'}</Text>
-                        <Text style={styles.roomDetail}>Room: A-204</Text>
-                      </View>
-                    </View>
-                  ))
-                )}
-              </View>
-            );
-          })
-        )}
+        {renderContent()}
       </ScrollView>
     </SafeAreaView>
   );
@@ -194,196 +237,125 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
+  scrollContainer: {
     padding: 16,
-    paddingBottom: 40,
-  },
-  screenTitle: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 12,
+    paddingBottom: 32,
   },
   pillsScroll: {
-    marginBottom: 16,
+    paddingBottom: 14,
+    gap: 8,
   },
   pill: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
   pillActive: {
-    backgroundColor: Colors.primary + '22',
-    borderColor: Colors.primary,
+    backgroundColor: Colors.teal,
+    borderColor: Colors.teal,
   },
   pillText: {
-    color: Colors.textSecondary,
     fontSize: 13,
     fontWeight: '600',
+    color: Colors.textSecondary,
   },
   pillTextActive: {
-    color: Colors.primary,
-    fontWeight: 'bold',
+    color: Colors.textInverse,
   },
-  daySection: {
-    marginBottom: 20,
-  },
-  dayHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  centerSection: {
+    padding: 24,
     alignItems: 'center',
-    marginBottom: 10,
+    justifyContent: 'center',
+    gap: 8,
   },
-  dayTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.primary,
-    letterSpacing: 0.5,
-  },
-  dayCount: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  card: {
-    backgroundColor: Colors.surface,
-    padding: 16,
-    borderRadius: 10,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  periodBadge: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
-  time: {
+  loadingText: {
     fontSize: 13,
     color: Colors.textSecondary,
+  },
+  dayGroup: {
+    marginBottom: 12,
+  },
+  periodCard: {
+    marginBottom: 10,
+    padding: 14,
+  },
+  periodHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  periodBadge: {
+    backgroundColor: Colors.tealLight,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  periodBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.tealDark,
+  },
+  timeWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  timeText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '500',
   },
   subjectRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 8,
   },
-  subject: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: Colors.text,
+  subjectText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.primary,
     flex: 1,
+    marginRight: 8,
   },
-  codeBadge: {
-    backgroundColor: Colors.border,
+  codeTag: {
+    backgroundColor: Colors.indigoLight,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
-    marginLeft: 8,
+    borderRadius: 6,
   },
-  codeText: {
-    color: Colors.textSecondary,
+  codeTagText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: Colors.indigo,
   },
-  metaRow: {
+  footerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: Colors.border + '55',
     paddingTop: 8,
-    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderLight,
   },
-  classDetail: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  roomDetail: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  emptyDayCard: {
-    backgroundColor: Colors.surface,
-    padding: 16,
-    borderRadius: 8,
+  classMeta: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flex: 1,
   },
-  emptyDayText: {
+  classText: {
+    fontSize: 12,
     color: Colors.textSecondary,
-    fontSize: 13,
-    fontStyle: 'italic',
+    fontWeight: '500',
   },
-  emptyCard: {
-    backgroundColor: Colors.surface,
-    padding: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
+  roomMeta: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 6,
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  centerSection: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: Colors.textSecondary,
-    marginTop: 10,
-    fontSize: 14,
-  },
-  errorBox: {
-    backgroundColor: Colors.error + '18',
-    borderWidth: 1,
-    borderColor: Colors.error,
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  errorText: {
-    color: Colors.error,
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  retryButton: {
-    backgroundColor: Colors.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  retryText: {
-    color: Colors.text,
-    fontSize: 13,
-    fontWeight: 'bold',
+  roomText: {
+    fontSize: 11,
+    color: Colors.textMuted,
   },
 });

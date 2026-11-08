@@ -1,9 +1,11 @@
+import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 import { Student } from '@smart-attendance/shared';
 
 const TOKEN_KEY = 'smart_attendance_student_token';
 const USER_KEY = 'smart_attendance_student_user';
 
-// In-memory fallback if localStorage is unavailable
+// In-memory fallback if all storage mechanisms fail
 const memoryStorage: Record<string, string> = {};
 
 function getLocalStorage(): Storage | null {
@@ -12,40 +14,51 @@ function getLocalStorage(): Storage | null {
       return window.localStorage;
     }
   } catch {
-    // In restricted web views or private browsing where localStorage is denied
+    // Restricted environment (e.g. private browsing)
   }
   return null;
+}
+
+async function isNativeSecureStorage(): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
+  try {
+    return await SecureStore.isAvailableAsync();
+  } catch {
+    return false;
+  }
 }
 
 export const authStorage = {
   /**
    * Retrieves the persisted JWT authentication token.
+   * Uses Android EncryptedSharedPreferences on native devices.
    */
   async getToken(): Promise<string | null> {
     try {
-      const storage = getLocalStorage();
-      if (storage) {
-        return storage.getItem(TOKEN_KEY);
+      if (await isNativeSecureStorage()) {
+        return await SecureStore.getItemAsync(TOKEN_KEY);
       }
+      const ls = getLocalStorage();
+      if (ls) return ls.getItem(TOKEN_KEY);
       return memoryStorage[TOKEN_KEY] || null;
-    } catch (e) {
-      console.warn('Failed to read auth token from storage:', e);
+    } catch {
       return memoryStorage[TOKEN_KEY] || null;
     }
   },
 
   /**
-   * Persists the signed JWT authentication token.
+   * Persists the signed JWT authentication token securely.
    */
   async setToken(token: string): Promise<void> {
     try {
-      const storage = getLocalStorage();
-      if (storage) {
-        storage.setItem(TOKEN_KEY, token);
+      if (await isNativeSecureStorage()) {
+        await SecureStore.setItemAsync(TOKEN_KEY, token);
+      } else {
+        const ls = getLocalStorage();
+        if (ls) ls.setItem(TOKEN_KEY, token);
       }
       memoryStorage[TOKEN_KEY] = token;
-    } catch (e) {
-      console.warn('Failed to save auth token to storage:', e);
+    } catch {
       memoryStorage[TOKEN_KEY] = token;
     }
   },
@@ -55,29 +68,34 @@ export const authStorage = {
    */
   async getUser(): Promise<Student | null> {
     try {
-      const storage = getLocalStorage();
-      const raw = storage ? storage.getItem(USER_KEY) : memoryStorage[USER_KEY];
+      let raw: string | null = null;
+      if (await isNativeSecureStorage()) {
+        raw = await SecureStore.getItemAsync(USER_KEY);
+      } else {
+        const ls = getLocalStorage();
+        raw = ls ? ls.getItem(USER_KEY) : memoryStorage[USER_KEY];
+      }
       if (!raw) return null;
       return JSON.parse(raw) as Student;
-    } catch (e) {
-      console.warn('Failed to read student profile from storage:', e);
+    } catch {
       return null;
     }
   },
 
   /**
-   * Persists the Student profile object as JSON.
+   * Persists the Student profile object.
    */
   async setUser(user: Student): Promise<void> {
     try {
       const raw = JSON.stringify(user);
-      const storage = getLocalStorage();
-      if (storage) {
-        storage.setItem(USER_KEY, raw);
+      if (await isNativeSecureStorage()) {
+        await SecureStore.setItemAsync(USER_KEY, raw);
+      } else {
+        const ls = getLocalStorage();
+        if (ls) ls.setItem(USER_KEY, raw);
       }
       memoryStorage[USER_KEY] = raw;
-    } catch (e) {
-      console.warn('Failed to save student profile to storage:', e);
+    } catch {
       memoryStorage[USER_KEY] = JSON.stringify(user);
     }
   },
@@ -87,15 +105,18 @@ export const authStorage = {
    */
   async clear(): Promise<void> {
     try {
-      const storage = getLocalStorage();
-      if (storage) {
-        storage.removeItem(TOKEN_KEY);
-        storage.removeItem(USER_KEY);
+      if (await isNativeSecureStorage()) {
+        await SecureStore.deleteItemAsync(TOKEN_KEY);
+        await SecureStore.deleteItemAsync(USER_KEY);
+      }
+      const ls = getLocalStorage();
+      if (ls) {
+        ls.removeItem(TOKEN_KEY);
+        ls.removeItem(USER_KEY);
       }
       delete memoryStorage[TOKEN_KEY];
       delete memoryStorage[USER_KEY];
-    } catch (e) {
-      console.warn('Failed to clear auth storage:', e);
+    } catch {
       delete memoryStorage[TOKEN_KEY];
       delete memoryStorage[USER_KEY];
     }

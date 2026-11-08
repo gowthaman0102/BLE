@@ -611,9 +611,10 @@ const styles = StyleSheet.create({
   },
   screenTitle: {
     fontSize: 26,
-    fontWeight: 'bold',
-    color: Colors.text,
+    fontWeight: '800',
+    color: Colors.primary,
     marginBottom: 4,
+    letterSpacing: -0.3,
   },
   screenSubtitle: {
     fontSize: 13,
@@ -623,8 +624,8 @@ const styles = StyleSheet.create({
   },
   viewModeToggleRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.surface,
-    borderRadius: 10,
+    backgroundColor: Colors.card,
+    borderRadius: 12,
     padding: 4,
     marginBottom: 16,
     borderWidth: 1,
@@ -637,9 +638,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   modeToggleBtnActive: {
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.tealLight,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: Colors.teal + '40',
   },
   modeToggleText: {
     fontSize: 13,
@@ -647,8 +648,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   modeToggleTextActive: {
-    color: Colors.text,
-    fontWeight: 'bold',
+    color: Colors.tealDark,
+    fontWeight: '700',
   },
   sectionHeading: {
     fontSize: 14,
@@ -664,7 +665,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   classChip: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.card,
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 10,
@@ -674,16 +675,16 @@ const styles = StyleSheet.create({
     minWidth: 110,
   },
   classChipActive: {
-    backgroundColor: 'rgba(16, 185, 129, 0.12)',
-    borderColor: Colors.primary,
+    backgroundColor: Colors.tealLight,
+    borderColor: Colors.teal,
   },
   classChipText: {
     fontSize: 15,
     fontWeight: 'bold',
-    color: Colors.text,
+    color: Colors.primary,
   },
   classChipTextActive: {
-    color: Colors.primary,
+    color: Colors.tealDark,
   },
   classChipSub: {
     fontSize: 11,
@@ -691,7 +692,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   classChipSubActive: {
-    color: Colors.primary,
+    color: Colors.tealDark,
   },
   dateFilterRow: {
     flexDirection: 'row',
@@ -703,14 +704,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 8,
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.card,
     borderWidth: 1,
     borderColor: Colors.border,
     alignItems: 'center',
   },
   dateFilterPillActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: Colors.teal,
+    borderColor: Colors.teal,
   },
   dateFilterPillText: {
     fontSize: 13,
@@ -718,7 +719,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   dateFilterPillTextActive: {
-    color: '#000000',
+    color: Colors.textInverse,
     fontWeight: 'bold',
   },
   dateRangeSubtitle: {
@@ -728,12 +729,17 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   metricsCard: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.card,
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
     borderColor: Colors.border,
     marginBottom: 16,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1.5,
   },
   metricsHeader: {
     flexDirection: 'row',
@@ -744,7 +750,7 @@ const styles = StyleSheet.create({
   metricsClassTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: Colors.text,
+    color: Colors.primary,
   },
   metricsClassSub: {
     fontSize: 12,

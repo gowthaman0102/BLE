@@ -899,39 +899,6 @@ export default function FaceVerificationSection({
           </View>
         </View>
       </Modal>
-
-      {/* Dev UI Preview switcher */}
-      {process.env.EXPO_PUBLIC_DEV_LOGIN_MODE === 'true' && (
-        <View style={styles.devControls}>
-          <Text style={styles.devTitle}>DEV PREVIEW: FACE & LIVENESS STATES (F6)</Text>
-          <View style={styles.devPills}>
-            {(
-              [
-                'BLE_NOT_DETECTED',
-                'BLE_DETECTED_FACE_REQUIRED',
-                'PERMISSION_PROMPT',
-                'CAMERA_READY',
-                'CHALLENGE_CAMERA_READY',
-                'CHALLENGE_PREVIEW',
-                'UPLOADING',
-                'SERVICE_UNAVAILABLE',
-                'FAILED',
-                'SUCCESS',
-              ] as FaceUiState[]
-            ).map((s) => (
-              <TouchableOpacity
-                key={s}
-                style={[styles.devPill, uiState === s && styles.devPillActive]}
-                onPress={() => setUiState(s)}
-              >
-                <Text style={[styles.devPillText, uiState === s && styles.devPillTextActive]}>
-                  {s.replace(/_/g, ' ')}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      )}
     </View>
   );
 }

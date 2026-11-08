@@ -384,28 +384,6 @@ export default function ActiveSessionCard({
         isBleVerified={state === 'VERIFIED'}
         onVerificationComplete={onAttendanceConfirmed}
       />
-
-      {/* Dev UI State Switcher in preview */}
-      {process.env.EXPO_PUBLIC_DEV_LOGIN_MODE === 'true' && (
-        <View style={styles.devControls}>
-          <Text style={styles.devControlsTitle}>PREVIEW UI STATES</Text>
-          <View style={styles.devPillRow}>
-            {(['READY', 'VERIFYING', 'VERIFIED', 'FAILED', 'PERMISSION_REQUIRED', 'BLE_UNAVAILABLE', 'EXPIRED'] as BleVerificationState[]).map(
-              (s) => (
-                <TouchableOpacity
-                  key={s}
-                  style={[styles.devPill, state === s && styles.devPillActive]}
-                  onPress={() => setState(s)}
-                >
-                  <Text style={[styles.devPillText, state === s && styles.devPillTextActive]}>
-                    {s}
-                  </Text>
-                </TouchableOpacity>
-              )
-            )}
-          </View>
-        </View>
-      )}
     </View>
   );
 }

@@ -1,57 +1,133 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  SafeAreaView,
+  ScrollView,
+  Alert,
+  StatusBar,
+} from 'react-native';
 import { useAuth } from '../../store/AuthContext';
 import { router } from 'expo-router';
 import Colors from '../../constants/Colors';
+import { Card, SectionHeader, PrimaryButton } from '../../components/ui';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function SettingsScreen() {
   const { logout, user } = useAuth();
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  const handleLogout = async () => {
-    await logout();
-    router.replace('/login');
+  const handleLogout = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out of the Smart Attendance professor portal?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            setLoggingOut(true);
+            try {
+              await logout();
+              router.replace('/login');
+            } finally {
+              setLoggingOut(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.screenTitle}>Settings</Text>
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.card} />
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        {/* Account Details Card */}
+        <SectionHeader title="Signed In Faculty Account" badge="Active Session" />
+        <Card style={styles.card}>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Faculty Name</Text>
+            <Text style={styles.infoValue}>{user?.name || 'Faculty Member'}</Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Official Email</Text>
+            <Text style={styles.infoValue}>{user?.collegeEmail || 'Not available'}</Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Staff Code</Text>
+            <Text style={styles.infoValue}>{user?.staffCode || 'Staff code not assigned'}</Text>
+          </View>
+        </Card>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionHeader}>BLE Attendance Configuration</Text>
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Scanner Mode</Text>
-            <Text style={styles.settingValue}>Active BLE Central</Text>
+        {/* BLE Attendance Engine Configuration */}
+        <SectionHeader title="Classroom BLE Central Engine" badge="Hardware Ready" />
+        <Card style={styles.card}>
+          <View style={styles.infoRow}>
+            <View style={styles.labelWithIcon}>
+              <Ionicons name="bluetooth" size={16} color={Colors.teal} style={{ marginRight: 6 }} />
+              <Text style={styles.infoLabel}>Scanner Mode</Text>
+            </View>
+            <Text style={[styles.infoValue, { color: Colors.teal, fontWeight: '700' }]}>
+              Active Central Scanner
+            </Text>
           </View>
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Signal Timeout</Text>
-            <Text style={styles.settingValue}>35 seconds</Text>
+          <View style={styles.divider} />
+          <View style={styles.infoRow}>
+            <View style={styles.labelWithIcon}>
+              <Ionicons name="timer-outline" size={16} color={Colors.teal} style={{ marginRight: 6 }} />
+              <Text style={styles.infoLabel}>Signal Timeout</Text>
+            </View>
+            <Text style={styles.infoValue}>35 seconds</Text>
           </View>
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>RSSI Threshold</Text>
-            <Text style={styles.settingValue}>-85 dBm (Classroom range)</Text>
+          <View style={styles.divider} />
+          <View style={styles.infoRow}>
+            <View style={styles.labelWithIcon}>
+              <Ionicons name="wifi-outline" size={16} color={Colors.teal} style={{ marginRight: 6 }} />
+              <Text style={styles.infoLabel}>RSSI Proximity Filter</Text>
+            </View>
+            <Text style={styles.infoValue}>-85 dBm (Classroom Range)</Text>
           </View>
-        </View>
+          <View style={styles.divider} />
+          <View style={styles.infoRow}>
+            <View style={styles.labelWithIcon}>
+              <Ionicons name="lock-closed-outline" size={16} color={Colors.teal} style={{ marginRight: 6 }} />
+              <Text style={styles.infoLabel}>Token Storage</Text>
+            </View>
+            <Text style={[styles.infoValue, { color: Colors.teal, fontWeight: '700' }]}>
+              Encrypted Native Store
+            </Text>
+          </View>
+        </Card>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionHeader}>System & Account</Text>
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Active User</Text>
-            <Text style={styles.settingValue}>{user?.collegeEmail || 'Not signed in'}</Text>
+        {/* Application Metadata */}
+        <SectionHeader title="Application Details" />
+        <Card style={styles.card}>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Release Version</Text>
+            <Text style={styles.infoValue}>1.0.0 (Production Release)</Text>
           </View>
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Version</Text>
-            <Text style={styles.settingValue}>1.0.0 (Expo Web)</Text>
+          <View style={styles.divider} />
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Framework</Text>
+            <Text style={styles.infoValue}>Expo SDK 57 • React Native 0.86</Text>
           </View>
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Preview Mode</Text>
-            <Text style={styles.settingValue}>Chrome Web</Text>
-          </View>
-        </View>
+        </Card>
 
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutButtonText}>Sign Out of Professor Portal</Text>
-        </TouchableOpacity>
+        {/* Sign Out Button */}
+        <PrimaryButton
+          title="Sign Out of Professor Portal"
+          onPress={handleLogout}
+          variant="danger"
+          loading={loggingOut}
+          icon="log-out-outline"
+          style={{ marginTop: 12, marginBottom: 24 }}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -62,60 +138,37 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  container: {
+  scrollContainer: {
     padding: 16,
-    paddingBottom: 40,
-  },
-  screenTitle: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 16,
+    paddingBottom: 32,
   },
   card: {
-    backgroundColor: Colors.surface,
-    padding: 20,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    padding: 16,
     marginBottom: 16,
   },
-  sectionHeader: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: Colors.primary,
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  settingRow: {
+  infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border + '55',
+    alignItems: 'center',
+    paddingVertical: 8,
   },
-  settingLabel: {
-    fontSize: 14,
-    color: Colors.text,
+  labelWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  settingValue: {
-    fontSize: 14,
+  infoLabel: {
+    fontSize: 13,
     color: Colors.textSecondary,
     fontWeight: '500',
   },
-  logoutButton: {
-    backgroundColor: Colors.error + '22',
-    borderWidth: 1,
-    borderColor: Colors.error,
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 16,
+  infoValue: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: '600',
   },
-  logoutButtonText: {
-    color: Colors.error,
-    fontWeight: 'bold',
-    fontSize: 15,
+  divider: {
+    height: 1,
+    backgroundColor: Colors.borderLight,
+    marginVertical: 4,
   },
 });

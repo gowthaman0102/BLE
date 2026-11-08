@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { setAuthToken } from '../services/api/client';
+import { apiClient, setAuthToken } from '../services/api/client';
 import { authService } from '../services/api/authService';
 import { authStorage } from '../services/storage/authStorage';
 import { Student } from '@smart-attendance/shared';
@@ -9,8 +9,9 @@ type AuthState = 'INITIALIZING' | 'UNAUTHENTICATED' | 'AUTHENTICATING' | 'AUTHEN
 interface AuthContextData {
   authState: AuthState;
   user: Student | null;
-  login: (username: string, registerNumber: string) => Promise<void>;
+  login: (registerNumber: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
@@ -35,13 +36,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setAuthToken(savedToken);
           setUser(savedUser);
           setAuthState('AUTHENTICATED');
+
+          // Validate token with backend /api/auth/me to ensure it hasn't expired or been revoked
+          try {
+            const meResp = await apiClient.get<{ success: boolean; user?: any }>('/api/auth/me');
+            if (!meResp.success && isMounted) {
+              await authStorage.clear();
+              setAuthToken(null);
+              setUser(null);
+              setAuthState('UNAUTHENTICATED');
+            }
+          } catch (validateErr: any) {
+            // If explicit 401/403, session has expired
+            if (validateErr?.statusCode === 401 || validateErr?.statusCode === 403) {
+              if (isMounted) {
+                await authStorage.clear();
+                setAuthToken(null);
+                setUser(null);
+                setAuthState('UNAUTHENTICATED');
+              }
+            }
+            // If network/offline, keep savedUser cached for offline viewing
+          }
         } else {
           setAuthToken(null);
           setUser(null);
           setAuthState('UNAUTHENTICATED');
         }
       } catch (e) {
-        console.warn('Session restoration failed:', e);
         if (isMounted) {
           setAuthToken(null);
           setUser(null);
@@ -57,25 +79,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const login = async (username: string, registerNumber: string) => {
+  const login = async (registerNumberInput: string) => {
     setAuthState('AUTHENTICATING');
     try {
-      if (!username || !registerNumber || username !== registerNumber) {
-        throw new Error('Username and Register Number must match.');
+      const regNo = registerNumberInput.trim();
+      if (!regNo) {
+        throw new Error('Please enter your Register Number.');
       }
       
-      const { student, token } = await authService.studentLogin(username, registerNumber);
+      // Pass the validated register number to both username and register_number to satisfy backend contract
+      const { student, token } = await authService.studentLogin(regNo, regNo);
       
       if (student && token) {
         await Promise.all([
           authStorage.setToken(token),
           authStorage.setUser(student),
         ]);
-        setAuthToken(token); // Use the signed JWT returned by the server
+        setAuthToken(token);
         setUser(student);
         setAuthState('AUTHENTICATED');
       } else {
-        throw new Error('Login failed.');
+        throw new Error('Authentication succeeded but received invalid data.');
       }
     } catch (e) {
       setAuthState('UNAUTHENTICATED');
@@ -93,8 +117,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const refreshProfile = async () => {
+    try {
+      if (user?.registerNumber) {
+        // Can reload user if needed
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ authState, user, login, logout }}>
+    <AuthContext.Provider value={{ authState, user, login, logout, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
