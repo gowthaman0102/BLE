@@ -113,52 +113,57 @@ export class LocalAuthService {
       return null;
     }
 
-    // Resolve or link the faculty member's real staff table identity
-    let staffRecord = (await db.select()
+    // Resolve legitimate existing staff table identity if one exists
+    const staffRecord = (await db.select()
       .from(staff)
       .where(and(
         sql`lower(${staff.collegeEmail}) = ${normalizedEmail}`,
         eq(staff.status, 'ACTIVE'),
       )))[0];
 
-    if (!staffRecord) {
-      const generatedStaffCode = `FAC-${facultyAccount.id.slice(0, 8).toUpperCase()}`;
-      [staffRecord] = await db.insert(staff).values({
-        name: facultyAccount.name,
-        collegeEmail: facultyAccount.email,
-        staffCode: generatedStaffCode,
-        status: 'ACTIVE',
-      }).returning();
+    if (staffRecord) {
+      const staffRoleRows = await db
+        .select({ roleName: roles.name })
+        .from(staffRoles)
+        .innerJoin(roles, eq(staffRoles.roleId, roles.id))
+        .where(eq(staffRoles.staffId, staffRecord.id));
 
-      const [staffRole] = await db.select().from(roles).where(eq(roles.name, 'STAFF'));
-      if (staffRole) {
-        await db.insert(staffRoles).values({
-          staffId: staffRecord.id,
-          roleId: staffRole.id,
-        }).onConflictDoNothing();
-      }
+      const assignedRoles = staffRoleRows.map((r) => r.roleName as UserRole);
+      const mappedRoles = [...new Set([...assignedRoles, 'FACULTY' as UserRole, 'STAFF' as UserRole])];
+
+      const principal: AuthPrincipal = {
+        id: staffRecord.id,
+        name: staffRecord.name,
+        collegeEmail: staffRecord.collegeEmail,
+        staffCode: staffRecord.staffCode,
+        roles: mappedRoles,
+        userType: 'STAFF',
+      };
+      const token = await new SignJWT({
+        kind: FACULTY_SESSION_KIND,
+        sessionVersion: facultyAccount.sessionVersion,
+        staffId: staffRecord.id,
+        userType: 'STAFF',
+      })
+        .setProtectedHeader({ alg: 'HS256' })
+        .setSubject(facultyAccount.id)
+        .setIssuedAt()
+        .setExpirationTime(`${SESSION_LIFETIME_SECONDS}s`)
+        .sign(getJwtSecret());
+      return { principal, token };
     }
 
-    const staffRoleRows = await db
-      .select({ roleName: roles.name })
-      .from(staffRoles)
-      .innerJoin(roles, eq(staffRoles.roleId, roles.id))
-      .where(eq(staffRoles.staffId, staffRecord.id));
-
-    const mappedRoles = [...new Set([...staffRoleRows.map((r) => r.roleName as UserRole), 'FACULTY' as UserRole, 'STAFF' as UserRole])];
-
+    // Faculty account without linked staff profile: preserve public faculty isolation
     const principal: AuthPrincipal = {
-      id: staffRecord.id,
-      name: staffRecord.name,
-      collegeEmail: staffRecord.collegeEmail,
-      staffCode: staffRecord.staffCode,
-      roles: mappedRoles,
+      id: facultyAccount.id,
+      name: facultyAccount.name,
+      collegeEmail: facultyAccount.email,
+      roles: ['FACULTY'],
       userType: 'STAFF',
     };
     const token = await new SignJWT({
       kind: FACULTY_SESSION_KIND,
       sessionVersion: facultyAccount.sessionVersion,
-      staffId: staffRecord.id,
       userType: 'STAFF',
     })
       .setProtectedHeader({ alg: 'HS256' })
@@ -432,45 +437,38 @@ export class LocalAuthService {
       }
 
       const normalizedEmail = account.email.trim().toLowerCase();
-      let staffRecord = (await db.select()
+      const staffRecord = (await db.select()
         .from(staff)
         .where(and(
           sql`lower(${staff.collegeEmail}) = ${normalizedEmail}`,
           eq(staff.status, 'ACTIVE'),
         )))[0];
 
-      if (!staffRecord) {
-        const generatedStaffCode = `FAC-${account.id.slice(0, 8).toUpperCase()}`;
-        [staffRecord] = await db.insert(staff).values({
-          name: account.name,
-          collegeEmail: account.email,
-          staffCode: generatedStaffCode,
-          status: 'ACTIVE',
-        }).returning();
+      if (staffRecord) {
+        const staffRoleRows = await db
+          .select({ roleName: roles.name })
+          .from(staffRoles)
+          .innerJoin(roles, eq(staffRoles.roleId, roles.id))
+          .where(eq(staffRoles.staffId, staffRecord.id));
 
-        const [staffRole] = await db.select().from(roles).where(eq(roles.name, 'STAFF'));
-        if (staffRole) {
-          await db.insert(staffRoles).values({
-            staffId: staffRecord.id,
-            roleId: staffRole.id,
-          }).onConflictDoNothing();
-        }
+        const assignedRoles = staffRoleRows.map((r) => r.roleName as UserRole);
+        const mappedRoles = [...new Set([...assignedRoles, 'FACULTY' as UserRole, 'STAFF' as UserRole])];
+
+        return {
+          id: staffRecord.id,
+          name: staffRecord.name,
+          collegeEmail: staffRecord.collegeEmail,
+          staffCode: staffRecord.staffCode,
+          roles: mappedRoles,
+          userType: 'STAFF',
+        };
       }
 
-      const staffRoleRows = await db
-        .select({ roleName: roles.name })
-        .from(staffRoles)
-        .innerJoin(roles, eq(staffRoles.roleId, roles.id))
-        .where(eq(staffRoles.staffId, staffRecord.id));
-
-      const mappedRoles = [...new Set([...staffRoleRows.map((r) => r.roleName as UserRole), 'FACULTY' as UserRole, 'STAFF' as UserRole])];
-
       return {
-        id: staffRecord.id,
-        name: staffRecord.name,
-        collegeEmail: staffRecord.collegeEmail,
-        staffCode: staffRecord.staffCode,
-        roles: mappedRoles,
+        id: account.id,
+        name: account.name,
+        collegeEmail: account.email,
+        roles: ['FACULTY'],
         userType: 'STAFF',
       };
     }

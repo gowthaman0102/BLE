@@ -1,5 +1,6 @@
 import { jwtVerify, SignJWT } from 'jose';
 import { db } from '../db';
+import { facultyAuthAccounts } from '../db/schema/auth';
 import { staff, staffRoles, roles } from '../db/schema/staff';
 import { students } from '../db/schema/students';
 import { eq } from 'drizzle-orm';
@@ -74,6 +75,19 @@ export class SessionTokenService {
           userType: 'STAFF',
           staffCode: staffUser.staffCode,
         };
+      }
+
+      if (payload.kind === 'faculty-session') {
+        const facultyAcc = await db.select().from(facultyAuthAccounts).where(eq(facultyAuthAccounts.id, principalId)).then((rows) => rows[0]);
+        if (facultyAcc && facultyAcc.status === 'ACTIVE') {
+          return {
+            id: facultyAcc.id,
+            name: facultyAcc.name,
+            collegeEmail: facultyAcc.email,
+            roles: ['FACULTY'],
+            userType: 'STAFF',
+          };
+        }
       }
     }
 
