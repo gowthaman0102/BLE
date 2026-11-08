@@ -19,9 +19,11 @@ import { Ionicons } from '@expo/vector-icons';
 const DAYS_OF_WEEK = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'] as const;
 
 function getInitialDay(): string {
-  const days = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-  const day = days[new Date().getDay()];
-  return day === 'SUNDAY' ? 'MONDAY' : day;
+  const weekday = new Date().toLocaleDateString('en-US', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'long',
+  }).toUpperCase();
+  return weekday === 'SUNDAY' ? 'MONDAY' : weekday;
 }
 
 export default function TimetableScreen() {

@@ -113,14 +113,54 @@ export class LocalAuthService {
       return null;
     }
 
+    // Resolve or link the faculty member's real staff table identity
+    let staffRecord = (await db.select()
+      .from(staff)
+      .where(and(
+        sql`lower(${staff.collegeEmail}) = ${normalizedEmail}`,
+        eq(staff.status, 'ACTIVE'),
+      )))[0];
+
+    if (!staffRecord) {
+      const generatedStaffCode = `FAC-${facultyAccount.id.slice(0, 8).toUpperCase()}`;
+      [staffRecord] = await db.insert(staff).values({
+        name: facultyAccount.name,
+        collegeEmail: facultyAccount.email,
+        staffCode: generatedStaffCode,
+        status: 'ACTIVE',
+      }).returning();
+
+      const [staffRole] = await db.select().from(roles).where(eq(roles.name, 'STAFF'));
+      if (staffRole) {
+        await db.insert(staffRoles).values({
+          staffId: staffRecord.id,
+          roleId: staffRole.id,
+        }).onConflictDoNothing();
+      }
+    }
+
+    const staffRoleRows = await db
+      .select({ roleName: roles.name })
+      .from(staffRoles)
+      .innerJoin(roles, eq(staffRoles.roleId, roles.id))
+      .where(eq(staffRoles.staffId, staffRecord.id));
+
+    const mappedRoles = [...new Set([...staffRoleRows.map((r) => r.roleName as UserRole), 'FACULTY' as UserRole, 'STAFF' as UserRole])];
+
     const principal: AuthPrincipal = {
-      id: facultyAccount.id,
-      name: facultyAccount.name,
-      collegeEmail: facultyAccount.email,
-      roles: ['FACULTY'],
+      id: staffRecord.id,
+      name: staffRecord.name,
+      collegeEmail: staffRecord.collegeEmail,
+      staffCode: staffRecord.staffCode,
+      roles: mappedRoles,
       userType: 'STAFF',
     };
-    const token = await new SignJWT({ kind: FACULTY_SESSION_KIND, sessionVersion: facultyAccount.sessionVersion })
+    const token = await new SignJWT({
+      kind: FACULTY_SESSION_KIND,
+      sessionVersion: facultyAccount.sessionVersion,
+      staffId: staffRecord.id,
+      userType: 'STAFF',
+    })
       .setProtectedHeader({ alg: 'HS256' })
       .setSubject(facultyAccount.id)
       .setIssuedAt()
@@ -390,11 +430,47 @@ export class LocalAuthService {
       if (!account || account.sessionVersion !== payload.sessionVersion) {
         throw new Error('Invalid session.');
       }
+
+      const normalizedEmail = account.email.trim().toLowerCase();
+      let staffRecord = (await db.select()
+        .from(staff)
+        .where(and(
+          sql`lower(${staff.collegeEmail}) = ${normalizedEmail}`,
+          eq(staff.status, 'ACTIVE'),
+        )))[0];
+
+      if (!staffRecord) {
+        const generatedStaffCode = `FAC-${account.id.slice(0, 8).toUpperCase()}`;
+        [staffRecord] = await db.insert(staff).values({
+          name: account.name,
+          collegeEmail: account.email,
+          staffCode: generatedStaffCode,
+          status: 'ACTIVE',
+        }).returning();
+
+        const [staffRole] = await db.select().from(roles).where(eq(roles.name, 'STAFF'));
+        if (staffRole) {
+          await db.insert(staffRoles).values({
+            staffId: staffRecord.id,
+            roleId: staffRole.id,
+          }).onConflictDoNothing();
+        }
+      }
+
+      const staffRoleRows = await db
+        .select({ roleName: roles.name })
+        .from(staffRoles)
+        .innerJoin(roles, eq(staffRoles.roleId, roles.id))
+        .where(eq(staffRoles.staffId, staffRecord.id));
+
+      const mappedRoles = [...new Set([...staffRoleRows.map((r) => r.roleName as UserRole), 'FACULTY' as UserRole, 'STAFF' as UserRole])];
+
       return {
-        id: account.id,
-        name: account.name,
-        collegeEmail: account.email,
-        roles: ['FACULTY'],
+        id: staffRecord.id,
+        name: staffRecord.name,
+        collegeEmail: staffRecord.collegeEmail,
+        staffCode: staffRecord.staffCode,
+        roles: mappedRoles,
         userType: 'STAFF',
       };
     }
@@ -413,25 +489,25 @@ export class LocalAuthService {
       })
       .from(staffCredentials)
       .innerJoin(staff, eq(staffCredentials.staffId, staff.id))
-      .innerJoin(staffRoles, eq(staffRoles.staffId, staff.id))
-      .innerJoin(roles, eq(staffRoles.roleId, roles.id))
+      .leftJoin(staffRoles, eq(staffRoles.staffId, staff.id))
+      .leftJoin(roles, eq(staffRoles.roleId, roles.id))
       .where(and(
         eq(staff.id, payload.sub),
         eq(staff.status, 'ACTIVE'),
-        inArray(roles.name, ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF']),
       ));
     const account = entries[0];
     if (!account || account.sessionVersion !== payload.sessionVersion) {
       throw new Error('Invalid session.');
     }
 
-    const allowedStaffRoles = ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF'];
+    const allowedStaffRoles = ['ADMIN', 'HOD', 'DEPUTY_HOD', 'CLASS_COUNSELOR', 'STAFF', 'FACULTY'];
+    const assignedRoles = entries.map((entry) => entry.role).filter((role): role is UserRole => typeof role === 'string' && allowedStaffRoles.includes(role));
     return {
       id: account.staffId,
       name: account.name,
       collegeEmail: account.collegeEmail,
       staffCode: account.staffCode,
-      roles: [...new Set(entries.map((entry) => entry.role).filter((role): role is UserRole => allowedStaffRoles.includes(role)))],
+      roles: assignedRoles.length > 0 ? [...new Set(assignedRoles)] : ['STAFF'],
       userType: 'STAFF',
     };
   }

@@ -56,6 +56,8 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [timetableError, setTimetableError] = useState<string | null>(null);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
 
   const [todaySchedule, setTodaySchedule] = useState<TimetableEntry[]>([]);
   const [allTimetable, setAllTimetable] = useState<TimetableEntry[]>([]);
@@ -67,28 +69,58 @@ export default function HomeScreen() {
   const loadDashboardData = useCallback(async () => {
     try {
       setError(null);
+      setTimetableError(null);
+      setSessionsError(null);
       const todayDate = getTodayDateString();
 
-      const [allEntries, sessions] = await Promise.all([
-        timetableService.getMyTimetable().catch(() => []),
-        attendanceService.getSessions({ date: todayDate }).catch(() => []),
+      const [timetableRes, sessionsRes] = await Promise.allSettled([
+        timetableService.getMyTimetable(),
+        attendanceService.getSessions({ date: todayDate }),
       ]);
 
-      setAllTimetable(allEntries);
+      let hadSuccess = false;
 
-      // Filter for today
-      const currentDay = getTodayWeekdayInKolkata();
-      const filteredToday = allEntries
-        .filter((entry) => entry.dayOfWeek === currentDay)
-        .sort((a, b) => {
-          if (a.periodStartTime && b.periodStartTime) {
-            return a.periodStartTime.localeCompare(b.periodStartTime);
-          }
-          return (a.periodNumber || 0) - (b.periodNumber || 0);
-        });
+      // 1. Process Timetable
+      if (timetableRes.status === 'fulfilled') {
+        const allEntries = timetableRes.value;
+        setAllTimetable(allEntries);
 
-      setTodaySchedule(filteredToday);
-      setActiveSessions(sessions.filter((s) => s.status === 'ACTIVE'));
+        // Filter for today
+        const currentDay = getTodayWeekdayInKolkata();
+        const filteredToday = allEntries
+          .filter((entry) => entry.dayOfWeek === currentDay)
+          .sort((a, b) => {
+            if (a.periodStartTime && b.periodStartTime) {
+              return a.periodStartTime.localeCompare(b.periodStartTime);
+            }
+            return (a.periodNumber || 0) - (b.periodNumber || 0);
+          });
+
+        setTodaySchedule(filteredToday);
+        hadSuccess = true;
+      } else {
+        const msg = timetableRes.reason?.message || 'Unable to load teaching timetable.';
+        setTimetableError(msg);
+      }
+
+      // 2. Process Sessions
+      if (sessionsRes.status === 'fulfilled') {
+        const sessions = sessionsRes.value;
+        setActiveSessions(sessions.filter((s) => s.status === 'ACTIVE'));
+        hadSuccess = true;
+      } else {
+        const msg = sessionsRes.reason?.message || 'Unable to load attendance sessions.';
+        setSessionsError(msg);
+      }
+
+      // If all calls failed, trigger global error
+      if (!hadSuccess) {
+        const primaryErr =
+          (timetableRes.status === 'rejected' && timetableRes.reason?.message) ||
+          (sessionsRes.status === 'rejected' && sessionsRes.reason?.message) ||
+          'Unable to load faculty dashboard data.';
+        setError(primaryErr);
+      }
     } catch (err: any) {
       setError(err?.message || 'Unable to load dashboard data. Please pull to refresh.');
     } finally {
@@ -189,17 +221,17 @@ export default function HomeScreen() {
         <View style={styles.metricRow}>
           <MetricCard
             label="Assigned Classes"
-            value={assignedClassesCount}
-            subtitle="Academic Sections"
+            value={timetableError ? '!' : assignedClassesCount}
+            subtitle={timetableError ? 'Unable to load' : 'Academic Sections'}
             icon="school-outline"
-            color={Colors.teal}
+            color={timetableError ? Colors.error : Colors.teal}
           />
           <MetricCard
             label="Today's Classes"
-            value={todaySchedule.length}
-            subtitle={`${todayDay.slice(0, 3)} Teaching Schedule`}
+            value={timetableError ? '!' : todaySchedule.length}
+            subtitle={timetableError ? 'Unable to load' : `${todayDay.slice(0, 3)} Teaching Schedule`}
             icon="calendar-outline"
-            color={Colors.indigo}
+            color={timetableError ? Colors.error : Colors.indigo}
           />
         </View>
 
@@ -217,6 +249,14 @@ export default function HomeScreen() {
               <ActivityIndicator size="small" color={Colors.teal} />
               <Text style={styles.loadingText}>Loading today's classes...</Text>
             </View>
+          ) : timetableError ? (
+            <ErrorState
+              message={timetableError}
+              onRetry={() => {
+                setLoading(true);
+                loadDashboardData();
+              }}
+            />
           ) : todaySchedule.length === 0 ? (
             <EmptyState
               icon="calendar-outline"

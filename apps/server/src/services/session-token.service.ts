@@ -50,31 +50,35 @@ export class SessionTokenService {
   async verifySessionToken(token: string): Promise<AuthPrincipal> {
     const secret = this.getJwtSecret();
     const { payload } = await jwtVerify(token, secret);
+    const principalId = (payload.staffId || payload.id || payload.sub) as string;
 
-    if (payload.userType === 'STAFF') {
-      const staffUser = await db.select().from(staff).where(eq(staff.id, payload.id as string)).then((rows) => rows[0]);
-      if (!staffUser || staffUser.status !== 'ACTIVE') {
-        throw new Error('ACCOUNT_INACTIVE: Staff account is inactive or not found.');
-      }
-      const staffRoleRows = await db
-        .select({ roleName: roles.name })
-        .from(staffRoles)
-        .innerJoin(roles, eq(staffRoles.roleId, roles.id))
-        .where(eq(staffRoles.staffId, staffUser.id));
+    if (!principalId) {
+      throw new Error('INVALID_TOKEN: Missing identifier in session token.');
+    }
 
-      return {
-        id: staffUser.id,
-        name: staffUser.name,
-        collegeEmail: staffUser.collegeEmail,
-        roles: staffRoleRows.map((r) => r.roleName as UserRole),
-        userType: 'STAFF',
-        staffCode: staffUser.staffCode,
-      };
-    } else {
-      const studentUser = await db.select().from(students).where(eq(students.id, payload.id as string)).then((rows) => rows[0]);
-      if (!studentUser || studentUser.status !== 'ACTIVE') {
-        throw new Error('ACCOUNT_INACTIVE: Student account is inactive or not found.');
+    if (payload.userType === 'STAFF' || payload.kind === 'hod-session' || payload.kind === 'faculty-session') {
+      const staffUser = await db.select().from(staff).where(eq(staff.id, principalId)).then((rows) => rows[0]);
+      if (staffUser && staffUser.status === 'ACTIVE') {
+        const staffRoleRows = await db
+          .select({ roleName: roles.name })
+          .from(staffRoles)
+          .innerJoin(roles, eq(staffRoles.roleId, roles.id))
+          .where(eq(staffRoles.staffId, staffUser.id));
+
+        const mappedRoles = staffRoleRows.map((r) => r.roleName as UserRole);
+        return {
+          id: staffUser.id,
+          name: staffUser.name,
+          collegeEmail: staffUser.collegeEmail,
+          roles: mappedRoles.length > 0 ? mappedRoles : ['STAFF'],
+          userType: 'STAFF',
+          staffCode: staffUser.staffCode,
+        };
       }
+    }
+
+    const studentUser = await db.select().from(students).where(eq(students.id, principalId)).then((rows) => rows[0]);
+    if (studentUser && studentUser.status === 'ACTIVE') {
       return {
         id: studentUser.id,
         name: studentUser.name,
@@ -85,6 +89,28 @@ export class SessionTokenService {
         classId: studentUser.classId,
       };
     }
+
+    // Fallback: check staff by principalId in case userType was omitted
+    const fallbackStaff = await db.select().from(staff).where(eq(staff.id, principalId)).then((rows) => rows[0]);
+    if (fallbackStaff && fallbackStaff.status === 'ACTIVE') {
+      const staffRoleRows = await db
+        .select({ roleName: roles.name })
+        .from(staffRoles)
+        .innerJoin(roles, eq(staffRoles.roleId, roles.id))
+        .where(eq(staffRoles.staffId, fallbackStaff.id));
+
+      const mappedRoles = staffRoleRows.map((r) => r.roleName as UserRole);
+      return {
+        id: fallbackStaff.id,
+        name: fallbackStaff.name,
+        collegeEmail: fallbackStaff.collegeEmail,
+        roles: mappedRoles.length > 0 ? mappedRoles : ['STAFF'],
+        userType: 'STAFF',
+        staffCode: fallbackStaff.staffCode,
+      };
+    }
+
+    throw new Error('ACCOUNT_INACTIVE: Account is inactive or not found.');
   }
 }
 

@@ -70,6 +70,8 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [timetableError, setTimetableError] = useState<string | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [todayTimetable, setTodayTimetable] = useState<TimetableEntry[]>([]);
   const [summary, setSummary] = useState<StudentAttendanceSummary | null>(null);
   const [hasActiveSession, setHasActiveSession] = useState<boolean>(false);
@@ -80,25 +82,58 @@ export default function HomeScreen() {
   const loadHomeData = useCallback(async () => {
     try {
       setError(null);
-      const [allTimetable, attendanceSummary, activeRes] = await Promise.all([
-        timetableService.getMyTimetable().catch(() => []),
-        attendanceService.getSummary().catch(() => null),
-        attendanceService.getCurrentSession().catch(() => ({ session: null })),
+      setTimetableError(null);
+      setSummaryError(null);
+
+      const [timetableRes, summaryRes, activeRes] = await Promise.allSettled([
+        timetableService.getMyTimetable(),
+        attendanceService.getSummary(),
+        attendanceService.getCurrentSession(),
       ]);
 
-      const currentDay = getTodayDayOfWeekInKolkata();
-      const filteredToday = allTimetable
-        .filter((entry) => entry.dayOfWeek === currentDay)
-        .sort((a, b) => {
-          if (a.periodStartTime && b.periodStartTime) {
-            return a.periodStartTime.localeCompare(b.periodStartTime);
-          }
-          return (a.periodNumber || 0) - (b.periodNumber || 0);
-        });
+      let hadSuccess = false;
 
-      setTodayTimetable(filteredToday);
-      setSummary(attendanceSummary);
-      setHasActiveSession(!!activeRes?.session);
+      // 1. Process Timetable
+      if (timetableRes.status === 'fulfilled') {
+        const currentDay = getTodayDayOfWeekInKolkata();
+        const filteredToday = timetableRes.value
+          .filter((entry) => entry.dayOfWeek === currentDay)
+          .sort((a, b) => {
+            if (a.periodStartTime && b.periodStartTime) {
+              return a.periodStartTime.localeCompare(b.periodStartTime);
+            }
+            return (a.periodNumber || 0) - (b.periodNumber || 0);
+          });
+        setTodayTimetable(filteredToday);
+        hadSuccess = true;
+      } else {
+        const msg = timetableRes.reason?.message || 'Unable to load timetable.';
+        setTimetableError(msg);
+      }
+
+      // 2. Process Attendance Summary
+      if (summaryRes.status === 'fulfilled') {
+        setSummary(summaryRes.value);
+        hadSuccess = true;
+      } else {
+        const msg = summaryRes.reason?.message || 'Unable to load attendance summary.';
+        setSummaryError(msg);
+      }
+
+      // 3. Process Active Session
+      if (activeRes.status === 'fulfilled') {
+        setHasActiveSession(!!activeRes.value?.session);
+        hadSuccess = true;
+      }
+
+      // If all three calls failed, trigger global error
+      if (!hadSuccess) {
+        const primaryErr =
+          (timetableRes.status === 'rejected' && timetableRes.reason?.message) ||
+          (summaryRes.status === 'rejected' && summaryRes.reason?.message) ||
+          'Unable to connect to the attendance service.';
+        setError(primaryErr);
+      }
     } catch (err: any) {
       setError(err?.message || 'Unable to refresh dashboard data.');
     } finally {
@@ -185,26 +220,37 @@ export default function HomeScreen() {
 
         {/* Attendance Summary Metric Cards */}
         <SectionHeader title="Attendance Metrics" badge="Academic Year" />
-        <View style={styles.metricRow}>
-          <MetricCard
-            label="Overall Attendance"
-            value={summary?.overall.hasData ? `${summary.overall.percentage}%` : 'N/A'}
-            subtitle={
-              summary?.overall.hasData
-                ? `${summary.overall.attendedSessions} of ${summary.overall.totalSessions} sessions`
-                : 'No sessions yet'
-            }
-            icon="analytics-outline"
-            color={Colors.teal}
+        {summaryError ? (
+          <ErrorState
+            message={summaryError}
+            onRetry={() => {
+              setLoading(true);
+              loadHomeData();
+            }}
+            style={{ marginBottom: 12 }}
           />
-          <MetricCard
-            label="Attended Periods"
-            value={summary?.overall.hasData ? summary.overall.attendedSessions : 0}
-            subtitle={summary?.overall.hasData ? `Present in classes` : 'Awaiting data'}
-            icon="checkmark-done-circle-outline"
-            color={Colors.indigo}
-          />
-        </View>
+        ) : (
+          <View style={styles.metricRow}>
+            <MetricCard
+              label="Overall Attendance"
+              value={summary?.overall.hasData ? `${summary.overall.percentage}%` : 'N/A'}
+              subtitle={
+                summary?.overall.hasData
+                  ? `${summary.overall.attendedSessions} of ${summary.overall.totalSessions} sessions`
+                  : 'No sessions recorded'
+              }
+              icon="analytics-outline"
+              color={Colors.teal}
+            />
+            <MetricCard
+              label="Attended Periods"
+              value={summary?.overall.hasData ? summary.overall.attendedSessions : 0}
+              subtitle={summary?.overall.hasData ? 'Present in classes' : 'Awaiting data'}
+              icon="checkmark-done-circle-outline"
+              color={Colors.indigo}
+            />
+          </View>
+        )}
 
         {/* Today's Schedule Section */}
         <SectionHeader
@@ -220,6 +266,14 @@ export default function HomeScreen() {
               <ActivityIndicator size="small" color={Colors.teal} />
               <Text style={styles.loadingText}>Loading today's schedule...</Text>
             </View>
+          ) : timetableError ? (
+            <ErrorState
+              message={timetableError}
+              onRetry={() => {
+                setLoading(true);
+                loadHomeData();
+              }}
+            />
           ) : todayTimetable.length === 0 ? (
             <EmptyState
               icon="calendar-outline"

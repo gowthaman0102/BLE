@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AuthPrincipal } from '@smart-attendance/shared';
-import { apiClient, setAuthToken } from '../services/api/client';
+import { apiClient, setAuthToken, setUnauthorizedHandler } from '../services/api/client';
 import { authStorage } from '../services/storage/authStorage';
 
 type AuthState = 'INITIALIZING' | 'UNAUTHENTICATED' | 'AUTHENTICATING' | 'AUTHENTICATED';
@@ -20,6 +20,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
+
+    setUnauthorizedHandler(() => {
+      if (isMounted) {
+        authStorage.clear().catch(() => {});
+        setAuthToken(null);
+        setUser(null);
+        setAuthState('UNAUTHENTICATED');
+      }
+    });
 
     async function restoreSession() {
       try {
@@ -74,6 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       isMounted = false;
+      setUnauthorizedHandler(null);
     };
   }, []);
 

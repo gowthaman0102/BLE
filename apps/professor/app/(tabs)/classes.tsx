@@ -72,10 +72,10 @@ export default function ClassesScreen() {
       setEntries(data);
 
       // Auto-select first class if not already selected
-      if (data.length > 0 && !selectedClassId) {
+      if (data.length > 0) {
         const firstWithClass = data.find((e) => e.classId);
         if (firstWithClass && firstWithClass.classId) {
-          setSelectedClassId(firstWithClass.classId);
+          setSelectedClassId((prev) => prev || firstWithClass.classId);
         }
       }
     } catch (err: any) {
@@ -84,7 +84,7 @@ export default function ClassesScreen() {
     } finally {
       setLoadingClasses(false);
     }
-  }, [selectedClassId]);
+  }, []);
 
   useEffect(() => {
     fetchClasses();

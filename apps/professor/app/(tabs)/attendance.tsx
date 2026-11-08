@@ -100,21 +100,32 @@ export default function AttendanceScreen() {
       const today = getTodayDateString();
 
       // Check for active sessions
-      const sessions = await attendanceService.getSessions({ date: today });
-      const currentActive = sessions.find((s) => s.status === 'ACTIVE') || null;
+      let sessions: AttendanceSession[] = [];
+      try {
+        sessions = await attendanceService.getSessions({ date: today });
+      } catch (sessionErr: any) {
+        throw new Error(`Sessions error: ${sessionErr?.message || 'Unable to load attendance sessions.'}`);
+      }
 
+      const currentActive = sessions.find((s) => s.status === 'ACTIVE') || null;
       setActiveSession(currentActive);
 
       if (currentActive) {
-        const live = await attendanceService.getLiveAttendance(currentActive.id);
-        setLiveData(live);
+        try {
+          const live = await attendanceService.getLiveAttendance(currentActive.id);
+          setLiveData(live);
+        } catch (liveErr: any) {
+          throw new Error(`Live roster error: ${liveErr?.message || 'Unable to load live attendance roster.'}`);
+        }
       } else {
         setLiveData(null);
         // Load today's classes so professor can start a session
-        const todayClasses = await timetableService.getTodayTimetable();
-        setTodaySchedule(todayClasses);
-        if (todayClasses.length > 0 && !selectedTimetableId) {
-          setSelectedTimetableId(todayClasses[0].id);
+        try {
+          const todayClasses = await timetableService.getTodayTimetable();
+          setTodaySchedule(todayClasses);
+          setSelectedTimetableId((prev) => prev || (todayClasses[0]?.id ?? ''));
+        } catch (ttErr: any) {
+          throw new Error(`Timetable error: ${ttErr?.message || 'Unable to load today\'s teaching periods.'}`);
         }
       }
     } catch (err: any) {
@@ -123,7 +134,7 @@ export default function AttendanceScreen() {
     } finally {
       setLoading(false);
     }
-  }, [selectedTimetableId]);
+  }, []);
 
   useEffect(() => {
     fetchSessionData();

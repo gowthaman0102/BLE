@@ -79,7 +79,7 @@ function getStatusBadgeConfig(status: StudentAttendanceHistoryItem['status']): {
 
 export default function AttendanceScreen() {
   const [sessionLoading, setSessionLoading] = useState<boolean>(true);
-  const [sessionError, setSessionError] = useState<boolean>(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const [session, setSession] = useState<AttendanceSession | null>(null);
   const [initialRecord, setInitialRecord] = useState<StudentAttendanceRecordStatus | null>(null);
 
@@ -91,12 +91,12 @@ export default function AttendanceScreen() {
 
   const fetchSession = useCallback(async () => {
     try {
-      setSessionError(false);
+      setSessionError(null);
       const res = await attendanceService.getCurrentSession();
       setSession(res.session);
       setInitialRecord(res.record);
-    } catch (error) {
-      setSessionError(true);
+    } catch (error: any) {
+      setSessionError(error?.message || 'Unable to verify active session status.');
     } finally {
       setSessionLoading(false);
     }
@@ -140,7 +140,7 @@ export default function AttendanceScreen() {
     if (sessionError) {
       return (
         <ErrorState
-          message="Unable to verify active session status."
+          message={sessionError}
           onRetry={() => {
             setSessionLoading(true);
             fetchSession();
